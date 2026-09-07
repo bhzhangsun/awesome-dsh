@@ -89,13 +89,13 @@
 > **Windows / Linux**：`install.sh` 的默认 `DSH_HOME` 是 macOS 路径。Windows（Git Bash / WSL）与 Linux 用户请先 `export DSH_HOME=<你的 dsh home 目录>` 再运行脚本；或手动两步（见下），两步与平台无关。
 
 脚本做的事（也可手动）：
-1. `ln -sfn <插件目录> "$DSH_HOME/profiles/web/node_modules/dsh-computer-use"`
+1. `ln -sfn <插件目录> "$DSH_HOME/profiles/web/node_modules/@bhzhangsun/dsh-computer-use"`
 2. 在 `$DSH_HOME/cordis.patch.yml`（dsh 的机器级用户 patch 层）insert 插件注册
 
 可选配置（`$DSH_HOME/cordis.patch.yml` 中覆盖）：
 
 ```yaml
-- id: dsh-computer-use
+- id: '@bhzhangsun/dsh-computer-use'
   config:
     ttlMs: 30000        # 快照有效期（毫秒，多步 UI 操作建议 30-60s）
     maxElements: 500    # screen_observe 最大编号元素数
@@ -173,7 +173,7 @@ MIT
 
 - GitHub：https://github.com/bhzhangsun/dsh-computer-use
 - Gitee 镜像（国内加速）：https://gitee.com/jerryweizhihao/dsh-computer-use
-- npm：https://www.npmjs.com/package/dsh-computer-use
+- npm：https://www.npmjs.com/package/@bhzhangsun/dsh-computer-use
 - AI House 独立站（AI 工具排行榜）：https://www.aibunkhouse.com/
 - harness-desktop（DeepSeek Harness 桌面端）：https://github.com/988hj7tczd-oss/harness-desktop
 - awesome-dsh-plugin（DeepSeek Harness 插件精选列表）：https://github.com/988hj7tczd-oss/awesome-dsh-plugin

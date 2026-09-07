@@ -48,7 +48,7 @@ import {
 import { withLock } from './lib/lock.js'
 import { getSnapshot, isFresh } from './lib/snapshot.js'
 
-export const name = 'dsh-computer-use'
+export const name = '@bhzhangsun/dsh-computer-use'
 
 export const inject = ['tools', 'approval']
 
