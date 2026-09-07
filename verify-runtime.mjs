@@ -11,21 +11,21 @@ import { fileURLToPath } from 'node:url'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createRequire } from 'node:module'
+import { spawnSync } from 'node:child_process'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const require = createRequire(import.meta.url)
 const { cuaCall } = await import(join(__dirname, 'lib/cua.js'))
+const { startedDaemonHere } = await import(join(__dirname, 'lib/driver.js'))
 const plugin = (await import(join(__dirname, 'index.js'))).default
 
-// 不使用过期的硬编码 PID/window_id：每次运行从 cua-driver 发现一个真实可见窗口。
-const liveWindowList = await cuaCall('list_windows', { on_screen_only: true })
-const testWindow = (liveWindowList.windows || []).find((w) =>
-  w.window_id && w.pid && w.app_name && !/^(Cua Driver|cua-driver|CursorUIViewService)$/i.test(w.app_name)
-)
-if (!testWindow) throw new Error('verify-runtime: 当前没有可用于真实观察的可见窗口')
-const testWindowRef = String(testWindow.pid)
-const testWindowArgs = { pid: testWindow.pid, window_id: testWindow.window_id }
-console.log(`测试窗口: ${testWindow.app_name} pid=${testWindow.pid} window_id=${testWindow.window_id}`)
+// 无头/CI 自检：跳过 cua-driver 的 macOS TCC 交互门（与官方 daemon 文档一致：
+// CUA_DRIVER_RS_PERMISSIONS_GATE=0）。真实权限授权流程由插件 ensurePermissions 在
+// 正常（非自检）运行下触发，不在此脚本覆盖。
+if (!process.env.CUA_DRIVER_RS_PERMISSIONS_GATE) process.env.CUA_DRIVER_RS_PERMISSIONS_GATE = '0'
+
+// 窗口发现延迟到 plugin.apply 之后：apply 现在会自动起 daemon（零配置），
+// 必须先让 daemon 就绪再 list_windows。
 
 const results = []
 const check = (name, ok, detail = '') => {
@@ -93,6 +93,7 @@ const registered = new Map()
 const ctx = {
   get: (name) => services[name],
   logger: { info: () => {}, error: () => {} },
+  on: () => {},
   tools: {
     register(def) {
       registered.set(def.name, def)
@@ -110,8 +111,26 @@ const config = {
   nativeImage: 'auto',
   visionProvider: 'deepseek-official',
   visionModel: 'deepseek-v4-flash-vision-exp',
+  // 离线/自检模式：不联网引导、不自更新、不弹权限（避免脚本副作用）
+  autoInstallDriver: false,
+  autoUpdate: false,
+  permissionMode: 'report',
 }
-plugin.apply(ctx, config)
+// 零配置：apply 会确保 cua-driver daemon 就绪（二进制已在 PATH 时直接起 serve）
+await plugin.apply(ctx, config)
+
+// 不使用过期的硬编码 PID/window_id：每次运行从 cua-driver 发现一个真实可见窗口。
+const liveWindowList = await cuaCall('list_windows', { on_screen_only: true })
+const testWindow = (liveWindowList.windows || []).find((w) =>
+  w.window_id && w.pid && w.app_name && !/^(Cua Driver|cua-driver|CursorUIViewService)$/i.test(w.app_name)
+)
+if (!testWindow) {
+  console.log('⚠️  当前没有可用于真实观察的可见窗口（daemon 就绪但无匹配窗口）；仅执行非引擎依赖的检查。')
+} else {
+  console.log(`测试窗口: ${testWindow.app_name} pid=${testWindow.pid} window_id=${testWindow.window_id}`)
+}
+const testWindowRef = testWindow ? String(testWindow.pid) : null
+const testWindowArgs = testWindow ? { pid: testWindow.pid, window_id: testWindow.window_id } : null
 
 // 断言工具注册 + 新能力
 check('插件注册 12-13 个工具', registered.size >= 12 && registered.size <= 13, `注册 ${registered.size} 个：${[...registered.keys()].join(', ')}`)
@@ -146,6 +165,7 @@ async function runTool(name, args, agent) {
   check('动作仍要求新鲜快照（无快照拒绝）', click.value?.ok === false && /快照|screen_observe/.test(click.value?.result ?? click.error ?? ''), (click.value?.result ?? click.error ?? '').slice(0, 100))
 }
 
+if (testWindowRef) {
 // 1) ax 观察（真实引擎）
 {
   services.llm = services.llmText
@@ -205,11 +225,19 @@ async function runTool(name, args, agent) {
   const r = await runTool('screen_observe', { mode: 'native', window: testWindowRef }, agentWith('deepseek-official', 'deepseek-v4-flash-vision-exp'))
   check('坐标语义 = 截图像素（输出标注）', /截图像素/.test(r.value?.result ?? ''))
 }
+} else {
+  console.log('（跳过真实引擎观察类检查：无可见窗口——daemon 仍由 apply 正常拉起，工具注册与护栏检查已覆盖）')
+}
 
 
 console.log('\n──────────────────────────────')
 const failed = results.filter((r) => !r.ok)
 console.log(`结果：${results.length - failed.length}/${results.length} 通过`)
+// 清理：若本脚本拉起了 daemon（之前不在运行），停掉以免残留后台进程。
+if (startedDaemonHere()) {
+  try { spawnSync('cua-driver', ['stop'], { stdio: 'ignore' }) } catch { /* 忽略 */ }
+  console.log('（已停止由本脚本拉起的 cua-driver daemon）')
+}
 if (failed.length > 0) {
   for (const f of failed) console.log('  FAIL:', f.name)
   process.exit(1)

@@ -7,7 +7,8 @@
 ## 1. 一次性 Profile 安装 / 启动 / 卸载步骤（在 DSH 宿主执行）
 
 ```bash
-# 0) 前置：隔离环境（不触碰 ~/.dsh），确保 cua-driver 已安装并在 PATH 或 CUA_DRIVER_BIN 指定
+# 0) 前置：隔离环境（不触碰 ~/.dsh）。本分支可零配置——cua-driver 缺失时由插件自动引导安装；
+#    若关闭 autoInstallDriver，则需确保其已安装并在 PATH 或 CUA_DRIVER_BIN 指定
 export DSH_HOME=$(mktemp -d /tmp/dsh-cu-profile-XXXXXX)
 
 # 1) 安装（方式 A：npm 包 / 本地目录均可）
@@ -34,18 +35,19 @@ rm -rf "$DSH_HOME"
 | 入口可加载 | `node -e "import('./index.js')"` | 成功（导出 name/inject/apply） |
 | 工具注册面 | grep index.js `defineTool` | **12 个工具**：screen_observe / screen_zoom / computer_click / computer_double_click / computer_right_click / computer_type / computer_key / computer_scroll / computer_drag / computer_wait / app_list / app_launch |
 | 安全护栏 | index.js `guard()` 统一包装 | 危险词审批、密码框保护、过期状态拒绝、作用域权限 |
-| 权限面 | `PERMISSIONS.md` | spawn cua-driver（非 shell 固定 argv）；无网络 / 凭据 / 文件读写 / 生命周期脚本 |
+| 权限面 | `PERMISSIONS.md` | 运行期 spawn cua-driver 固定 argv；**有界引导**（缺失时一次性联网下载 + 写缓存目录 `~/Library/Caches/dsh-computer-use/bin`，直连模式 SHA256 校验）；该有界网络/写已在 package.json `dsh.permissions` 如实声明 |
+| 真实引擎集成（2026-09-02，本机实跑） | `node _test-driver.mjs` | 真实 cua-driver 0.23.2：ensureDaemon 起 daemon → ensureCuaSession 建会话 → list_windows 返回真实窗口 → get_window_state 返回 3 个真实元素 → endAllCuaSessions 清会话 → 停 daemon，全链路通过 |
 | npm 包 | `npm pack` 内容核验 | files: index.js / lib/ / tools/ / cordis.patch.yml / README / VERIFICATION / PERMISSIONS.md / docs/ / LICENSE |
 
 ## 3. STORE 五信号响应行
 
 | 信号 | 响应 |
 |---|---|
-| 规范仓库（canonical repository） | package.json `repository` → `git+https://github.com/988hj7tczd-oss/dsh-computer-use.git`（与仓库一致） |
+| 规范仓库（canonical repository） | package.json `repository` → `git+https://github.com/bhzhangsun/dsh-computer-use.git`（与仓库一致） |
 | Node 兼容性声明 | `engines.node >= 22.18.0` + `dsh.compatibility.node` |
 | 供应链审查 | 依赖仅 `@deepseek-ai/dsh-tools` + `@deepseek-ai/schemastery`（官方生态）；无 runtime/optional 第三方依赖；peer 层面无 |
-| 文件权限信号 | 有 `spawn` 子进程（cua-driver）——真实插件核心能力，非数据访问；无 fs 读写 |
-| 命令权限信号 | `spawn` 固定 argv、`shell: false`、无 `exec`/`eval`/`shell: true` |
+| 文件权限信号 | 运行期 `spawn` cua-driver（核心能力，非数据访问）；**有界引导**向 `~/Library/Caches/dsh-computer-use/bin` 一次性写入 cua-driver 二进制（及可选自更新），已在 `PERMISSIONS.md` 声明 |
+| 命令权限信号 | `spawn` 固定 argv 调用 cua-driver（serve/call/status/stop/permissions/update）；**唯一 `shell:true` 仅用于一次性引导安装器**（curl\|sh，受 `autoInstallDriver` 控制），无 `exec`/`eval` |
 
 ## 4. 验证脚本
 

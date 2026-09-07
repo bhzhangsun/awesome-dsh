@@ -1,6 +1,6 @@
 {
   "name": "dsh-computer-use",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Computer Use 插件：虚拟鼠标真人操作 + 原生视觉模型接入（deepseek-v4-flash-vision-exp 直读截图），screen_observe 等 12 个模型友好工具",
   "type": "module",
   "main": "index.js",
@@ -21,13 +21,20 @@
       "dsh": ">=0.1.0"
     },
     "permissions": {
-      "summary": "通过宿主 spawn 以非 shell 固定 argv 调用 cua-driver 原生驱动本地桌面：屏幕观测（screen_observe/screen_zoom，AX 树+窗口快照）、虚拟鼠标键盘模拟（computer_click/type/key/scroll/drag/wait）、应用枚举与启动（app_list/app_launch）。内置安全护栏：危险词审批、密码框保护、过期状态拒绝、作用域权限；虚拟光标不抢占真实鼠标。无文件读写、无网络、无凭据访问。",
+      "summary": "Computer Use 插件：虚拟鼠标真人操作 + 原生视觉（12 工具）。零配置分支：首次运行若检测不到 cua-driver 原生二进制（63MB），会按配置自动引导安装（官方安装器 curl|sh，或直连 GitHub Release 下载并 SHA256 校验），写入托管缓存目录 ~/Library/Caches/dsh-computer-use/bin；运行期通过 spawn 以固定 argv 调用 cua-driver 管理常驻 daemon（serve/status/stop）、查询/触发 macOS 辅助功能与屏幕录制授权（permissions status|grant）、以及可选自更新（check-update / update --apply）。所有桌面操作经 cua-driver 完成，本插件自身不实现输入模拟。",
       "commands": [
-        "cua-driver (non-shell fixed argv, resolved via CUA_DRIVER_BIN or PATH)"
+        "cua-driver serve (detached daemon, default machine socket)",
+        "cua-driver call <tool> <json> (screen_observe / get_window_state / click / type_text / press_key / scroll / drag / list_windows / list_apps / launch_app / zoom / move_cursor / get_cursor_position / start_session / end_session / set_agent_cursor_theme)",
+        "cua-driver status / stop",
+        "cua-driver permissions status --json / permissions grant",
+        "cua-driver check-update --json / update --apply",
+        "bootstrapper: curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/install.sh | sh (configurable via driverInstallCommand; shell:true; ONE-TIME on missing binary; gated by autoInstallDriver)"
       ],
-      "writePaths": [],
-      "externalServices": "none",
-      "failureBoundaries": "cua-driver 缺失 → 结构化错误含自救指引；危险操作被审批拒绝 → 明确拒绝原因；观测快照过期 → 拒绝执行并提示重新观测；超时 → 超时错误",
+      "writePaths": [
+        "~/Library/Caches/dsh-computer-use/bin (cua-driver binary, written once on bootstrap / direct-download; equivalent on Windows/Linux)"
+      ],
+      "externalServices": "cua-driver local daemon (spawned by plugin, machine-scoped singleton); GitHub Releases (one-time bootstrap download + optional self-update). No third-party APIs or telemetry initiated by this plugin.",
+      "failureBoundaries": "cua-driver 缺失且 autoInstallDriver 关闭 → 结构化错误含 CUA_DRIVER_BIN 指引；引导失败 → 明确错误并可重试；危险操作被审批拒绝 → 明确拒绝原因；快照过期 → 拒绝执行并提示重新观测；权限未授予 → call 返回 permissions_pending，由 ensurePermissions 引导授权。",
       "lifecycleEvidence": "docs/store-evidence.md"
     }
   },
@@ -52,7 +59,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/988hj7tczd-oss/dsh-computer-use.git"
+    "url": "git+https://github.com/bhzhangsun/dsh-computer-use.git"
   },
   "engines": {
     "node": ">=22.18.0"
