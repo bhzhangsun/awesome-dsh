@@ -15,7 +15,7 @@ export DSH_HOME=$(mktemp -d /tmp/dsh-cu-profile-XXXXXX)
 npm install -g dsh-computer-use   # 或 dsh plugin --profile cu-demo add /path/to/dsh-computer-use
 
 # 2) 启动冒烟：Profile 应正常启动；工具注册表出现
-#    screen_observe / computer_click / computer_type / app_list 等 12 个工具
+#    screen_observe / computer_click / computer_type / app_list 等 13 个工具
 #    （会话内工具清单核对 + 读日志无 fatal/parse 错误）
 
 # 3) 实机验证（可选，需图形会话）：screen_observe 返回 AX 树；computer_wait 无副作用
@@ -33,7 +33,7 @@ rm -rf "$DSH_HOME"
 |---|---|---|
 | 语法检查 | `npm run check`（node --check 全 JS + bash -n install/uninstall.sh） | 0 错误 |
 | 入口可加载 | `node -e "import('./index.js')"` | 成功（导出 name/inject/apply） |
-| 工具注册面 | grep index.js `defineTool` | **12 个工具**：screen_observe / screen_zoom / computer_click / computer_double_click / computer_right_click / computer_type / computer_key / computer_scroll / computer_drag / computer_wait / app_list / app_launch |
+| 工具注册面 | grep index.js `defineTool` | **13 个工具**：screen_observe / screen_zoom / computer_click / computer_double_click / computer_right_click / computer_type / computer_key / computer_scroll / computer_drag / computer_wait / computer_sequence / app_list / app_launch |
 | 安全护栏 | index.js `guard()` 统一包装 | 危险词审批、密码框保护、过期状态拒绝、作用域权限 |
 | 权限面 | `PERMISSIONS.md` | 运行期 spawn cua-driver 固定 argv；**有界引导**（缺失时一次性联网下载 + 写缓存目录 `~/Library/Caches/dsh-computer-use/bin`，直连模式 SHA256 校验）；该有界网络/写已在 package.json `dsh.permissions` 如实声明 |
 | 真实引擎集成（2026-09-02，本机实跑） | `node _test-driver.mjs` | 真实 cua-driver 0.23.2：ensureDaemon 起 daemon → ensureCuaSession 建会话 → list_windows 返回真实窗口 → get_window_state 返回 3 个真实元素 → endAllCuaSessions 清会话 → 停 daemon，全链路通过 |

@@ -12,6 +12,7 @@
  *   computer_scroll         滚动
  *   computer_drag           拖拽
  *   computer_wait           等待 / 轮询间隔
+ *   computer_sequence       批量执行多个动作（一次调用=一轮推理，提速）
  *   app_list                列出应用
  *   app_launch              启动应用
  *
@@ -45,6 +46,7 @@ import {
   restartDaemon, waitForGranted,
 } from './lib/driver.js'
 import { withLock } from './lib/lock.js'
+import { getSnapshot, isFresh } from './lib/snapshot.js'
 
 export const name = 'dsh-computer-use'
 
@@ -99,16 +101,18 @@ const OUT = (extra = {}) => ({
 /** 图片块输出 schema 段（native 直读工具共用）。 */
 const IMAGE_FIELD = {
   image: {
-    type: 'object',
-    additionalProperties: false,
-    properties: {
-      attachmentId: { type: 'string', required: true },
-      mediaType: { type: 'string', enum: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'], required: true },
-      bytes: { type: 'integer', required: true },
-      width: { oneOf: [{ type: 'integer' }, { type: 'null' }] },
-      height: { oneOf: [{ type: 'integer' }, { type: 'null' }] },
-      name: { type: 'string' },
-    },
+    oneOf: [{
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        attachmentId: { type: 'string', required: true },
+        mediaType: { type: 'string', enum: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'], required: true },
+        bytes: { type: 'integer', required: true },
+        width: { oneOf: [{ type: 'integer' }, { type: 'null' }] },
+        height: { oneOf: [{ type: 'integer' }, { type: 'null' }] },
+        name: { type: 'string' },
+      },
+    }, { type: 'null' }],
   },
 }
 
@@ -227,6 +231,55 @@ export async function apply(ctx, config) {
     } catch (err) {
       return { ok: false, result: `✗ 授权重试失败: ${err.message}` }
     }
+  }
+
+  /**
+   * 批量执行：一次调用顺序跑多个动作（输入→回车→等待 等界面稳定的连续动作），
+   * 把多轮模型推理压成一轮，提速明显。不中途重新观察——只适用于界面稳定的连续动作；
+   * 凡依赖中间结果的步骤（如"点搜索结果第一项"）仍应单独 screen_observe 后再做。
+   */
+  const STEP_OPS = {
+    click: { fn: click, name: 'computer_click' },
+    double_click: { fn: doubleClick, name: 'computer_double_click' },
+    right_click: { fn: rightClick, name: 'computer_right_click' },
+    type: { fn: typeText, name: 'computer_type' },
+    key: { fn: key, name: 'computer_key' },
+    scroll: { fn: scroll, name: 'computer_scroll' },
+    drag: { fn: drag, name: 'computer_drag' },
+    wait: { fn: wait, name: 'computer_wait' },
+  }
+  const COORD_OPS = new Set(['click', 'double_click', 'right_click', 'drag'])
+
+  const runSequence = async (steps, exec, sid) => {
+    if (!Array.isArray(steps) || steps.length === 0) {
+      return { ok: false, result: '✗ computer_sequence 需要非空 steps 数组。' }
+    }
+    // 含坐标/编号动作的步骤：要求开场有新鲜快照（避免盲点到错误窗口）
+    const needsSnap = steps.some((s) => COORD_OPS.has(s.op) || (s.op === 'scroll' && s.element !== undefined))
+    if (needsSnap) {
+      const snap = getSnapshot(sid)
+      if (!snap || !isFresh(snap, cfg.ttlMs)) {
+        return { ok: false, result: '✗ 序列含坐标/编号动作，请先 screen_observe 建立新鲜快照后再批量执行。' }
+      }
+    }
+    const results = []
+    for (const s of steps) {
+      const op = STEP_OPS[s.op]
+      if (!op) { results.push({ op: s.op, ok: false, result: `✗ 未知动作 op: ${s.op}` }); break }
+      const g = await guard(ctx, cfg, op.name, s, exec, sid)
+      if (!g.ok) { results.push({ op: s.op, ok: false, result: `✗ ${g.reason}` }); break }
+      try {
+        const r = await op.fn(s, cfg, sid)
+        results.push({ op: s.op, ...r })
+        if (!r.ok) break
+      } catch (e) {
+        results.push({ op: s.op, ok: false, result: `✗ ${e.message}` })
+        break
+      }
+    }
+    const allOk = results.every((r) => r.ok)
+    const summary = results.map((r) => `[${r.op}] ${r.result}`).join('\n')
+    return { ok: allOk, result: summary }
   }
 
   /** 统一包装：先过安全护栏，再执行实现；全程持全局锁，并按会话隔离。 */
@@ -410,6 +463,47 @@ export async function apply(ctx, config) {
     },
     output: OUT(),
     execute: wrap('computer_wait', (args) => wait(args)),
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'computer_sequence',
+    description:
+      '批量执行多个动作（一次调用 = 一轮模型推理），把"输入→回车→等待"等界面稳定的连续动作压成一步，显著提速。' +
+      '例：搜歌可 [{op:"type",text:"明天会更好"},{op:"key",key:"return"},{op:"wait",ms:1500}]。' +
+      '注意：序列中途不重新观察屏幕，只适用于界面稳定的连续动作；凡依赖中间结果（如"点搜索结果第一项"）的步骤，' +
+      '应先单独 screen_observe 取得坐标/编号，再发起序列。' +
+      'op 可选：click/double_click/right_click/type/key/scroll/drag/wait；各 op 参数同对应 computer_* 工具' +
+      '（click 用 element 或 x/y；type 用 text；key 用 key；scroll 用 direction/amount/element；drag 用 from_*/to_*；wait 用 ms）。',
+    parameters: {
+      steps: {
+        type: 'array',
+        required: true,
+        description: '有序动作列表，每项 { op, ...对应参数 }。',
+        items: {
+          type: 'object',
+          additionalProperties: true,
+          properties: {
+            op: { type: 'string', enum: ['click', 'double_click', 'right_click', 'type', 'key', 'scroll', 'drag', 'wait'] },
+            element: { type: 'integer' },
+            x: { type: 'integer' },
+            y: { type: 'integer' },
+            text: { type: 'string' },
+            key: { type: 'string' },
+            direction: { type: 'string' },
+            amount: { type: 'integer' },
+            from_x: { type: 'integer' },
+            from_y: { type: 'integer' },
+            to_x: { type: 'integer' },
+            to_y: { type: 'integer' },
+            count: { type: 'integer' },
+            duration_ms: { type: 'integer' },
+            ms: { type: 'integer' },
+          },
+        },
+      },
+    },
+    output: OUT(),
+    execute: wrap('computer_sequence', (args, cfg2, exec, sid) => runSequence(args.steps, exec, sid)),
   }))
 
   ctx.tools.register(defineTool({
