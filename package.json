@@ -58,8 +58,8 @@
   },
   "dependencies": {},
   "peerDependencies": {
-    "@deepseek-ai/dsh-tools": "0.1.2-rc.1",
-    "@deepseek-ai/schemastery": "3.18.2"
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/schemastery": "*"
   },
   "repository": {
     "type": "git",
