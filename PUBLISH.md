@@ -6,7 +6,7 @@
 
 | 项 | 状态 |
 |----|------|
-| 仓库创建 | ✅ `https://github.com/988hj7tczd-oss/dsh-computer-use`（public）|
+| 仓库创建 | ✅ `https://github.com/bhzhangsun/dsh-computer-use`（public）|
 | 代码推送 | ✅ 21 个文件（22 减项目书）|
 | description | ✅ 中文描述（Computer Use 插件：虚拟鼠标真人操作 for DeepSeek Harness…）|
 | topics | ✅ `dsh-plugin` + `deepseek-harness` + `computer-use` + `cua-driver` + `ai-agents` |
@@ -19,7 +19,7 @@
 git init -b main
 git add -A
 git commit -m "feat: dsh-computer-use plugin — virtual mouse computer use"
-git remote add origin https://github.com/988hj7tczd-oss/dsh-computer-use.git
+git remote add origin https://github.com/bhzhangsun/dsh-computer-use.git
 git push -u origin main
 ```
 
@@ -57,7 +57,7 @@ awesome 列表（2229⭐，dsh 官方精选）收录规则（2026-08-15 实测�
 1. Fork [awesome-dsh-plugin/awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)
 2. 在 `README.md` 和 `README.zh.md` 的合适分类各加一行：
    ```markdown
-   - [988hj7tczd-oss/dsh-computer-use](https://github.com/988hj7tczd-oss/dsh-computer-use) — 跨平台 Computer Use 插件：虚拟鼠标真人操作（AX 零视觉成本 + GLM 视觉兜底，安全护栏）
+   - [bhzhangsun/dsh-computer-use](https://github.com/bhzhangsun/dsh-computer-use) — 跨平台 Computer Use 插件：虚拟鼠标真人操作（AX 零视觉成本 + GLM 视觉兜底，安全护栏）
    ```
    放哪个分类？候选：`Tools & Capabilities` / `Development & Runtime` / 新增 `Computer Use` 分类
 3. 提交 PR，等合并

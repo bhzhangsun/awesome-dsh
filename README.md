@@ -5,6 +5,20 @@
 
 跨平台（macOS / Windows / Linux），引擎基于 [cua-driver](https://github.com/trycua/cua)（MIT 开源，MCP 标准接口）。
 
+## 这个插件做了什么
+
+把开源 Computer Use 引擎 [cua-driver](https://github.com/trycua/cua) 封装成一个 **DeepSeek Harness 插件**，让 harness 里的 AI 助手获得"像人一样操作电脑"的能力：看屏幕（截图 / 无障碍树）→ 移动真实像素级虚拟光标 → 点击 / 输入 / 滚动 / 拖拽，替用户完成桌面任务。
+
+**核心易用性提升（装好即用，零配置）**：
+
+- **一行安装**：`dsh plugin --profile desktop add @bhzhangsun/dsh-computer-use`，无需克隆仓库、无需手建软链。
+- **无需手动装驱动**：首次运行若检测不到 `cua-driver`，插件自动引导安装（官方安装器或直连 Release + SHA256 校验）。
+- **无需手动起服务**：插件加载时自动拉起 `cua-driver serve` 常驻进程，并在残留 socket 等异常后自愈；卸载时不误杀共享 daemon。
+- **权限自动引导**：macOS 下自动检测并触发辅助功能 / 屏幕录制授权弹窗。
+- **能力自动发现**：安装即向 agent 的系统提示注入 Computer Use 能力说明，模型会自行判断何时调用，无需手动指定插件。
+
+安装后重启 harness，直接对 AI 说"打开计算器并点一下 5"即可——底层引擎、驱动与服务都由插件自动接管。
+
 ## ✨ 能力
 
 | 工具 | 功能 |
@@ -50,12 +64,37 @@
 
 > ⚠️ **作用范围说明**：危险词审批与密码框保护基于观察到的**元素标签**，仅对 `element` 编号模式生效；`x/y` 坐标模式与无目标输入（`computer_type` / `computer_key` 落到前台应用）无法预知目标内容，由快照 TTL 与"操作可见"兜底。`computer_key` 不校验快捷键本身（如 cmd+q 等系统快捷键），请勿授予不可信模型。这是设计取舍：安全优先级 = 元素语义 > 坐标盲操作，但坐标模式保留了真人可视操作的自由度。
 
+## 🚀 零配置（本分支新增）
+
+本分支（`feat/zero-config-cua-driver`）对标 ChatGPT 客户端的 ComputerUse：装好插件即可用，
+**不再需要手动安装 / 配置 cua-driver，也不再需要手动起常驻 server**。插件在加载时自动完成：
+
+1. **自动引导二进制**：首次运行时若检测不到 `cua-driver`（63MB Rust 原生二进制），按配置自动安装
+   —— 默认跑官方安装器 `curl … install.sh | sh`，或 `driverInstallMethod: direct` 直连 GitHub Release
+   下载并 SHA256 校验，写入托管缓存目录 `~/Library/Caches/dsh-computer-use/bin`（一次联网 + 一次写文件，
+   之后运行期不再下载）。设 `autoInstallDriver: false` 可关闭此行为、改为手动安装。
+2. **自动管理常驻 daemon**：缺则起 `cua-driver serve`（机器级单例，detached + unref），运行期常驻；
+   插件卸载/销毁时**只 `end_session` 清自己的会话，绝不 `stop` 共享 daemon**（其他会话可能还在用）。
+3. **自动权限引导**：macOS 下检测辅助功能 + 屏幕录制授权状态，必要时代 `permissions grant` 触发系统弹窗。
+4. **可选自更新**：过期则委托 `update --apply` 自更新（可设 `autoUpdate: false` 关闭）。
+
+> 联网/写文件**仅发生在上述首次引导**（及可选自更新）。若你关闭 `autoInstallDriver` 并手动装好
+> `cua-driver`，运行期本插件不联网、不写任何文件。详见 `PERMISSIONS.md`。
+
+并发安全：DSH 插件每 profile 单实例、会话共享同一个引擎与真实屏幕。本分支为**每个 harness 会话**
+分配独立 cua session（各自虚拟光标），快照按会话隔离，并对所有触碰屏幕的工具加一把**进程内全局锁**，
+确保同一时刻只有一个会话真正动屏幕。
+
 ## 📦 安装
 
 前提：
 - harness-desktop（含 dsh rc 运行时）
-- cua-driver 已安装（官方安装见 [trycua/cua](https://github.com/trycua/cua)）且权限已授权（macOS：Accessibility + Screen Recording；Windows：普通用户权限运行）
-- 插件默认从 PATH 查找 `cua-driver`；若二进制不在 PATH，设 `CUA_DRIVER_BIN=/path/to/cua-driver`（Windows 常用）
+- （零配置）`cua-driver` 可由插件自动引导；若关闭自动引导，则需手动安装（官方见 [trycua/cua](https://github.com/trycua/cua)）且权限已授权（macOS：Accessibility + Screen Recording；Windows：普通用户权限运行）
+- 插件默认从 PATH / 缓存目录查找 `cua-driver`；若二进制不在 PATH，设 `CUA_DRIVER_BIN=/path/to/cua-driver`（Windows 常用）
+
+有两种安装方式，效果等价：
+
+### 方式一：源码 / 软链接安装（适合本地开发、改代码）
 
 ```bash
 # 一键安装（home 级用户 patch 层注入，不修改任何 profile 配置）
@@ -68,13 +107,26 @@
 > **Windows / Linux**：`install.sh` 的默认 `DSH_HOME` 是 macOS 路径。Windows（Git Bash / WSL）与 Linux 用户请先 `export DSH_HOME=<你的 dsh home 目录>` 再运行脚本；或手动两步（见下），两步与平台无关。
 
 脚本做的事（也可手动）：
-1. `ln -sfn <插件目录> "$DSH_HOME/profiles/web/node_modules/dsh-computer-use"`
+1. `ln -sfn <插件目录> "$DSH_HOME/profiles/web/node_modules/@bhzhangsun/dsh-computer-use"`
 2. 在 `$DSH_HOME/cordis.patch.yml`（dsh 的机器级用户 patch 层）insert 插件注册
+
+### 方式二：从 npm 安装（推荐，免克隆仓库）
+
+```bash
+# 用 dsh CLI 直接从 npm 拉取并注册到指定 profile（自动装进 node_modules + 注入 patch）
+dsh plugin --profile desktop add @bhzhangsun/dsh-computer-use
+# 重启用效；卸载：
+dsh plugin --profile desktop remove @bhzhangsun/dsh-computer-use
+```
+
+> 等价于 `npm install -g @bhzhangsun/dsh-computer-use` 后再手动 `ln -sfn` + 写 `cordis.patch.yml`，
+> 但 `dsh plugin add` 一步到位，是首选。已发布到
+> [npm](https://www.npmjs.com/package/@bhzhangsun/dsh-computer-use)。
 
 可选配置（`$DSH_HOME/cordis.patch.yml` 中覆盖）：
 
 ```yaml
-- id: dsh-computer-use
+- id: '@bhzhangsun/dsh-computer-use'
   config:
     ttlMs: 30000        # 快照有效期（毫秒，多步 UI 操作建议 30-60s）
     maxElements: 500    # screen_observe 最大编号元素数
@@ -83,6 +135,14 @@
     nativeImage: auto   # 原生直读截图策略：auto（PNG 超限额自动降级 ≤500px JPEG）/ full / compact
     visionProvider: deepseek-official  # Mode D 观察者 provider 路由
     visionModel: deepseek-v4-flash-vision-exp  # Mode D 观察者模型（需声明 image 输入）
+    # —— 零配置引导（本分支新增）——
+    autoInstallDriver: true      # cua-driver 缺失时自动引导安装（false 则要求手动安装）
+    driverInstallMethod: installer  # installer（默认，运行 driverInstallCommand）/ direct（直连 Release 下载）
+    driverInstallCommand: 'curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/install.sh | sh'  # 可覆盖
+    driverReleaseUrl: ''         # direct 模式：平台/架构对应的 Release 资产 URL
+    driverReleaseSha256: ''      # direct 模式：预期 SHA256（空则不校验）
+    permissionMode: auto         # auto（尝试 permissions grant 触发系统弹窗）/ report（仅检测并提示）
+    autoUpdate: true             # 过期则委托 cua-driver 自更新（update --apply）
 ```
 
 ## 📸 原生视觉模型接入（v0.2.0）
@@ -134,6 +194,13 @@ DSH_HOME=$PWD/.dsh-p0 ELECTRON_RUN_AS_NODE=1 \
   --profile test "请调用 screen_observe 观察当前窗口并报告"
 ```
 
+## 🙏 致谢
+
+- **[TryCua / cua-driver](https://github.com/trycua/cua)** —— 本插件的能力完全建立在 cua-driver 这个开源（MIT）Computer Use 引擎之上。屏幕观察、虚拟光标、像素级点击等核心能力均来自该项目；本插件仅做"零配置封装与 harness 接入"。
+- **[DeepSeek Harness (DSH)](https://github.com/988hj7tczd-oss/harness-desktop)** —— 提供插件宿主与 Cordis 插件框架，使本插件能以极低成本接入 agent 的工具体系。
+
+本插件是上述优秀开源项目的"胶水层"，底层创新归功于原始作者与社区。
+
 ## 📄 License
 
 MIT
@@ -142,9 +209,9 @@ MIT
 
 ## 🌐 相关链接
 
-- GitHub：https://github.com/988hj7tczd-oss/dsh-computer-use
+- GitHub：https://github.com/bhzhangsun/dsh-computer-use
 - Gitee 镜像（国内加速）：https://gitee.com/jerryweizhihao/dsh-computer-use
-- npm：https://www.npmjs.com/package/dsh-computer-use
+- npm：https://www.npmjs.com/package/@bhzhangsun/dsh-computer-use
 - AI House 独立站（AI 工具排行榜）：https://www.aibunkhouse.com/
 - harness-desktop（DeepSeek Harness 桌面端）：https://github.com/988hj7tczd-oss/harness-desktop
 - awesome-dsh-plugin（DeepSeek Harness 插件精选列表）：https://github.com/988hj7tczd-oss/awesome-dsh-plugin
