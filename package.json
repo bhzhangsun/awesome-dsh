@@ -1,6 +1,6 @@
 {
   "name": "@bhzhangsun/dsh-computer-use",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "publishConfig": {
     "access": "public"
   },
@@ -58,8 +58,8 @@
   },
   "dependencies": {},
   "peerDependencies": {
-    "@deepseek-ai/dsh-tools": "*",
-    "@deepseek-ai/schemastery": "*"
+    "@deepseek-ai/dsh-tools": "0.1.2-rc.1",
+    "@deepseek-ai/schemastery": "3.18.2"
   },
   "repository": {
     "type": "git",
