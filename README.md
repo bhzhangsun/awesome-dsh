@@ -78,6 +78,10 @@
 - （零配置）`cua-driver` 可由插件自动引导；若关闭自动引导，则需手动安装（官方见 [trycua/cua](https://github.com/trycua/cua)）且权限已授权（macOS：Accessibility + Screen Recording；Windows：普通用户权限运行）
 - 插件默认从 PATH / 缓存目录查找 `cua-driver`；若二进制不在 PATH，设 `CUA_DRIVER_BIN=/path/to/cua-driver`（Windows 常用）
 
+有两种安装方式，效果等价：
+
+### 方式一：源码 / 软链接安装（适合本地开发、改代码）
+
 ```bash
 # 一键安装（home 级用户 patch 层注入，不修改任何 profile 配置）
 ./install.sh            # 预演: ./install.sh --dry-run
@@ -91,6 +95,19 @@
 脚本做的事（也可手动）：
 1. `ln -sfn <插件目录> "$DSH_HOME/profiles/web/node_modules/@bhzhangsun/dsh-computer-use"`
 2. 在 `$DSH_HOME/cordis.patch.yml`（dsh 的机器级用户 patch 层）insert 插件注册
+
+### 方式二：从 npm 安装（推荐，免克隆仓库）
+
+```bash
+# 用 dsh CLI 直接从 npm 拉取并注册到指定 profile（自动装进 node_modules + 注入 patch）
+dsh plugin --profile desktop add @bhzhangsun/dsh-computer-use
+# 重启用效；卸载：
+dsh plugin --profile desktop remove @bhzhangsun/dsh-computer-use
+```
+
+> 等价于 `npm install -g @bhzhangsun/dsh-computer-use` 后再手动 `ln -sfn` + 写 `cordis.patch.yml`，
+> 但 `dsh plugin add` 一步到位，是首选。已发布到
+> [npm](https://www.npmjs.com/package/@bhzhangsun/dsh-computer-use)。
 
 可选配置（`$DSH_HOME/cordis.patch.yml` 中覆盖）：
 
