@@ -5,6 +5,20 @@
 
 跨平台（macOS / Windows / Linux），引擎基于 [cua-driver](https://github.com/trycua/cua)（MIT 开源，MCP 标准接口）。
 
+## 这个插件做了什么
+
+把开源 Computer Use 引擎 [cua-driver](https://github.com/trycua/cua) 封装成一个 **DeepSeek Harness 插件**，让 harness 里的 AI 助手获得"像人一样操作电脑"的能力：看屏幕（截图 / 无障碍树）→ 移动真实像素级虚拟光标 → 点击 / 输入 / 滚动 / 拖拽，替用户完成桌面任务。
+
+**核心易用性提升（装好即用，零配置）**：
+
+- **一行安装**：`dsh plugin --profile desktop add @bhzhangsun/dsh-computer-use`，无需克隆仓库、无需手建软链。
+- **无需手动装驱动**：首次运行若检测不到 `cua-driver`，插件自动引导安装（官方安装器或直连 Release + SHA256 校验）。
+- **无需手动起服务**：插件加载时自动拉起 `cua-driver serve` 常驻进程，并在残留 socket 等异常后自愈；卸载时不误杀共享 daemon。
+- **权限自动引导**：macOS 下自动检测并触发辅助功能 / 屏幕录制授权弹窗。
+- **能力自动发现**：安装即向 agent 的系统提示注入 Computer Use 能力说明，模型会自行判断何时调用，无需手动指定插件。
+
+安装后重启 harness，直接对 AI 说"打开计算器并点一下 5"即可——底层引擎、驱动与服务都由插件自动接管。
+
 ## ✨ 能力
 
 | 工具 | 功能 |
@@ -179,6 +193,13 @@ DSH_HOME=$PWD/.dsh-p0 ELECTRON_RUN_AS_NODE=1 \
   /Applications/harness-desktop.app/Contents/Resources/app/node_modules/@deepseek-ai/dsh/lib/bin.js \
   --profile test "请调用 screen_observe 观察当前窗口并报告"
 ```
+
+## 🙏 致谢
+
+- **[TryCua / cua-driver](https://github.com/trycua/cua)** —— 本插件的能力完全建立在 cua-driver 这个开源（MIT）Computer Use 引擎之上。屏幕观察、虚拟光标、像素级点击等核心能力均来自该项目；本插件仅做"零配置封装与 harness 接入"。
+- **[DeepSeek Harness (DSH)](https://github.com/988hj7tczd-oss/harness-desktop)** —— 提供插件宿主与 Cordis 插件框架，使本插件能以极低成本接入 agent 的工具体系。
+
+本插件是上述优秀开源项目的"胶水层"，底层创新归功于原始作者与社区。
 
 ## 📄 License
 
