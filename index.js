@@ -548,6 +548,31 @@ export async function apply(ctx, config) {
     execute: wrap('app_launch', (args, _c, _e, sid) => launchApp(args, sid)),
   }))
 
+  // 系统提示注入：让 agent 知道自身拥有 Computer Use 能力，由 LLM 自行权衡何时调用。
+  // 用 ctx.inject 动态注入——systemPrompt 服务缺失（如部分 profile）时自动跳过，不影响加载。
+  ctx.inject(['systemPrompt'], (scope) => {
+    scope.systemPrompt.section({
+      name: 'dsh-computer-use:capabilities',
+      order: 400, // 紧随 persona(order 0) 之后、plan/team policy(500/600) 之前
+      text: [
+        '## Computer Use 能力',
+        '你拥有操作当前用户本机（macOS / Windows / Linux）的能力：通过一个独立的虚拟光标，像真人一样“看屏幕、移动、点击、输入”。下列工具已就绪，请按需自行决定何时使用：',
+        '',
+        '- 看屏：`screen_observe`（返回可点击元素的编号与坐标，支持 native / vision / ax 三模式；游戏 / Canvas / Electron 等无 AX 树的界面用 native 截图直读）、`screen_zoom`（区域截图放大直读）。',
+        '- 操作：`computer_click` / `computer_double_click` / `computer_right_click`（真实像素级点击）、`computer_type`（文本输入）、`computer_key`（按键 / 快捷键）、`computer_scroll`（滚动）、`computer_drag`（拖拽）、`computer_wait`（等待）、`computer_sequence`（多步编排）。',
+        '- 应用：`app_list`（列出正在运行的应用）、`app_launch`（启动应用）。',
+        '',
+        '**使用流程**：当用户要你操作本机 / 桌面 / 某个 App、打开窗口、点击某按钮、填写表单，或读取屏幕上可见的内容时——',
+        '1. 先调用 `screen_observe` 获取当前屏幕的元素编号与坐标；',
+        '2. 再用 `computer_*` 工具按编号 / 坐标执行操作；',
+        '3. 多步任务每步前重新 `screen_observe`（屏幕状态会变，且快照有有效期）。',
+        '所有坐标与元素编号都来自 `screen_observe` 的输出，所见即所点。',
+        '',
+        '注意：这些操作是真实且可见的，会实际改变用户屏幕状态；涉及删除 / 支付 / 转账等危险操作时你会被要求先获得用户批准，密码框不会被自动填写。请只有在用户意图明确指向“操作这台电脑”时才使用上述工具。',
+      ].join('\n'),
+    })
+  })
+
   // 插件卸载/上下文销毁时：只结束本插件持有的 cua session（清自己的光标/录制），
   // 绝不 stop 共享 daemon（其他会话可能还在用）。
   ctx.on?.('dispose', () => { void endSessionOnUnload() })
