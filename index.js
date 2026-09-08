@@ -284,6 +284,9 @@ export async function apply(ctx, config) {
 
   /** 统一包装：先过安全护栏，再执行实现；全程持全局锁，并按会话隔离。 */
   const wrap = (toolName, impl) => async (args, exec) => {
+    // 每次工具调用先确保 daemon 在跑（幂等、合并并发；serve 前会清残留 socket）。
+    // daemon 中途挂掉、或启动期被残留 socket 卡住时，无需重启 app 即可自愈。
+    await ensureDaemon(cfg, ctx).catch(() => undefined)
     const sid = sessionKeyOf(exec)
     const runGuarded = () => withLock(async () => {
       const g = await guard(ctx, cfg, toolName, args, exec, sid)
