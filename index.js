@@ -16,6 +16,15 @@
  *   app_list                列出应用
  *   app_launch              启动应用
  *
+ *   浏览器驱动（CDP，DOM 级；Chrome / Edge 走同一条路径，Safari 退回 computer-use）：
+ *   browser_prepare         绑定浏览器 DevTools 端点
+ *   get_browser_state       读页面 / 取元素 ref
+ *   browser_navigate        按 URL 打开
+ *   browser_click            DOM 级点击
+ *   browser_type             DOM 级输入
+ *   browser_pointer         hover / 右键 / 双击 / 滚动 / 拖拽
+ *   browser_dialog          处理 JS 弹窗
+ *
  * 视觉能力（原生接入）：
  *   - mode="native"：截图经 attachments 持久化后以图片块返回，主对话模型
  *     （如 deepseek-v4-flash-vision-exp）直接看图 —— 零外部 API、零额外 key。
@@ -39,6 +48,9 @@ import { screenObserve, screenZoom } from './lib/observe.js'
 import {
   click, doubleClick, rightClick, typeText, key, scroll, drag, wait, listApps, launchApp,
 } from './lib/actions.js'
+import {
+  browserPrepare, browserGetState, browserNavigate, browserClick, browserType, browserPointer, browserDialog,
+} from './lib/browser.js'
 import { guard } from './lib/guard.js'
 import { cuaCall, ensureCuaSession, DEFAULT_SESSION } from './lib/cua.js'
 import {
@@ -551,6 +563,130 @@ export async function apply(ctx, config) {
     execute: wrap('app_launch', (args, _c, _e, sid) => launchApp(args, sid)),
   }))
 
+  // ───── 浏览器驱动（CDP / Chrome DevTools Protocol）─────
+  // 仅透传 cua-driver 的 browser_* 引擎调用，不做封装；sid 由 cuaCall 自动注入为 session。
+  // 兼容性：Chrome / Edge（同为 Chromium）完整支持；Safari 走不了 CDP，相关任务由提示词退回 computer-use。
+  ctx.tools.register(defineTool({
+    name: 'browser_prepare',
+    description:
+      '绑定一个浏览器的 DevTools 端点，为后续 browser_* 工具建立会话作用域的 target_id / tab_id。' +
+      '两种用法：① 自主 / 公开站点任务用 `{ allow_launch: true, profile: { mode: "isolated_new" } }` 在后台启动一个隔离浏览器（不碰用户数据）；' +
+      '② 接管用户已打开的 Chrome / Edge：传其 `pid`（来自 app_list）。返回 target_id / tab_id，供后续 navigate / click / type 逐次透传。',
+    parameters: {
+      allow_launch: { type: 'boolean', description: '是否允许启动一个 driver 拥有的隔离 Chromium（默认 false）。与 pid 二选一。' },
+      pid: { type: 'integer', description: '目标浏览器进程 pid（app_list 输出）。与 allow_launch 二选一；接管用户浏览器时传此值。' },
+      profile: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          mode: { type: 'string', enum: ['isolated_new', 'isolated_named'], required: true, description: '隔离 profile 模式：isolated_new（全新隔离）/ isolated_named（命名隔离，需 name）。' },
+          name: { type: 'string', description: 'isolated_named 时必填，1-64 个路径安全 ASCII 字符。' },
+        },
+        description: '仅 allow_launch=true 时使用，描述启动的隔离 profile。',
+      },
+    },
+    output: OUT(),
+    execute: wrap('browser_prepare', (args, _c, _e, sid) => browserPrepare(args, _c, _e, sid)),
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'get_browser_state',
+    description:
+      '只读检查浏览器：读取页面的 DOM / 语义大纲 / 元素 ref（用于定位与校验网页内容）。' +
+      '传 target_id + tab_id 读取该标签页快照（返回可点击元素的 ref 与文本）；' +
+      '若 browser_prepare 只返回 pid，也可传 pid + window_id 重新取 target_id / tab_id。' +
+      '多步任务每步前重新调用以取最新 ref（导航 / 新快照会让旧 ref 失效）。',
+    parameters: {
+      target_id: { type: 'string', description: 'browser_prepare / 本工具返回的 target id（会话作用域）。' },
+      tab_id: { type: 'string', description: '标签页 id（会话作用域）。与 target_id 一起传表示读快照。' },
+      pid: { type: 'integer', description: '可选：原生浏览器进程 pid（bind 模式，配合 window_id）。' },
+      window_id: { type: 'integer', description: '可选：pid 拥有的原生窗口 id（bind 模式）。' },
+      query: { type: 'string', description: '可选：按角色 / 名称 / 可见文本做语义匹配过滤。' },
+      include_screenshot: { type: 'boolean', description: '可选：是否附带标签页视口截图（PNG）。默认 false。' },
+      snapshot_format: { type: 'string', enum: ['dom_refs_v1', 'semantic_v2'], description: '快照格式，默认 dom_refs_v1。' },
+    },
+    output: OUT(),
+    execute: wrap('get_browser_state', (args, _c, _e, sid) => browserGetState(args, _c, _e, sid)),
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'browser_navigate',
+    description: '在已绑定的标签页打开 URL（仅 http / https / about）。导航会使该标签页的旧 ref 失效。',
+    parameters: {
+      target_id: { type: 'string', required: true, description: 'browser_prepare 返回的 target id。' },
+      tab_id: { type: 'string', required: true, description: '标签页 id。' },
+      url: { type: 'string', required: true, description: '目标网址（http / https / about）。' },
+    },
+    output: OUT(),
+    execute: wrap('browser_navigate', (args, _c, _e, sid) => browserNavigate(args, _c, _e, sid)),
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'browser_click',
+    description: '点击页面元素：传 get_browser_state 返回的 ref，或视口 x/y 坐标（CSS px）。默认走可信硬件级输入。',
+    parameters: {
+      target_id: { type: 'string', required: true, description: 'target id。' },
+      tab_id: { type: 'string', required: true, description: '标签页 id。' },
+      ref: { type: 'string', description: '元素 ref（p<snapshot>:<index>），来自 get_browser_state。与 x/y 二选一。' },
+      x: { type: 'number', description: '视口 x（CSS px），替代 ref。' },
+      y: { type: 'number', description: '视口 y（CSS px），替代 ref。' },
+      input_route: { type: 'string', enum: ['trusted', 'dom_event'], description: '输入路由：trusted（默认）/ dom_event（仅显式请求时用）。' },
+    },
+    output: OUT(),
+    execute: wrap('browser_click', (args, _c, _e, sid) => browserClick(args, _c, _e, sid)),
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'browser_type',
+    description: '向页面元素输入文本：传 get_browser_state 返回的 ref。默认在光标处插入（追加到已有文本）；replace:true 先全选再输入（清空则清框）。',
+    parameters: {
+      target_id: { type: 'string', required: true, description: 'target id。' },
+      tab_id: { type: 'string', required: true, description: '标签页 id。' },
+      ref: { type: 'string', required: true, description: '可编辑元素 ref，来自 get_browser_state。' },
+      text: { type: 'string', required: true, description: '要输入的文本。' },
+      replace: { type: 'boolean', description: 'true=先全选再替换（空文本则清空）；默认 false=光标处插入。' },
+      mode: { type: 'string', enum: ['insert_text', 'keystrokes'], description: 'insert_text（默认）/ keystrokes（逐字符按键）。' },
+    },
+    output: OUT(),
+    execute: wrap('browser_type', (args, _c, _e, sid) => browserType(args, _c, _e, sid)),
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'browser_pointer',
+    description: '在标签页内做 hover / 右键 / 双击 / 滚动 / 拖拽。ref 或 x/y 定位；scroll 用 delta_x/delta_y；drag 用 destination_ref 或 to_x/to_y。',
+    parameters: {
+      target_id: { type: 'string', required: true, description: 'target id。' },
+      tab_id: { type: 'string', required: true, description: '标签页 id。' },
+      action: { type: 'string', enum: ['hover', 'right_click', 'double_click', 'scroll', 'drag'], required: true, description: '动作类型。' },
+      ref: { type: 'string', description: '原点 ref，或 x/y。' },
+      x: { type: 'number', description: '原点视口 x。' },
+      y: { type: 'number', description: '原点视口 y。' },
+      destination_ref: { type: 'string', description: '拖拽目标 ref（与原点同帧）。' },
+      to_x: { type: 'number', description: '拖拽目标视口 x。' },
+      to_y: { type: 'number', description: '拖拽目标视口 y。' },
+      delta_x: { type: 'number', description: '横向滚动增量（CSS px）。' },
+      delta_y: { type: 'number', description: '纵向滚动增量（CSS px）。' },
+      input_route: { type: 'string', enum: ['trusted', 'dom_event'], description: '输入路由（默认 trusted）。' },
+    },
+    output: OUT(),
+    execute: wrap('browser_pointer', (args, _c, _e, sid) => browserPointer(args, _c, _e, sid)),
+  }))
+
+  ctx.tools.register(defineTool({
+    name: 'browser_dialog',
+    description: '处理页面 JS 弹窗（alert / confirm / prompt / beforeunload）：inspect 取 dialog_id，accept / dismiss 处理。注意：不处理浏览器权限 / 扩展 / 原生对话框。',
+    parameters: {
+      target_id: { type: 'string', required: true, description: 'target id。' },
+      tab_id: { type: 'string', required: true, description: '标签页 id。' },
+      action: { type: 'string', enum: ['inspect', 'accept', 'dismiss'], required: true, description: 'inspect 取 id / accept 确认 / dismiss 取消。' },
+      dialog_id: { type: 'string', description: 'inspect 返回的当前 dialog id（accept / dismiss 时必填）。' },
+      prompt_text: { type: 'string', description: '仅 accept prompt 弹窗时有效。' },
+      delivery_mode: { type: 'string', enum: ['background', 'foreground'], description: '默认 background。' },
+    },
+    output: OUT(),
+    execute: wrap('browser_dialog', (args, _c, _e, sid) => browserDialog(args, _c, _e, sid)),
+  }))
+
   // 系统提示注入：让 agent 知道自身拥有 Computer Use 能力，由 LLM 自行权衡何时调用。
   // 用 ctx.inject 动态注入——systemPrompt 服务缺失（如部分 profile）时自动跳过，不影响加载。
   ctx.inject(['systemPrompt'], (scope) => {
@@ -564,6 +700,7 @@ export async function apply(ctx, config) {
         '- 看屏：`screen_observe`（返回可点击元素的编号与坐标，支持 native / vision / ax 三模式；游戏 / Canvas / Electron 等无 AX 树的界面用 native 截图直读）、`screen_zoom`（区域截图放大直读）。',
         '- 操作：`computer_click` / `computer_double_click` / `computer_right_click`（真实像素级点击）、`computer_type`（文本输入）、`computer_key`（按键 / 快捷键）、`computer_scroll`（滚动）、`computer_drag`（拖拽）、`computer_wait`（等待）、`computer_sequence`（多步编排）。',
         '- 应用：`app_list`（列出正在运行的应用）、`app_launch`（启动应用）。',
+        '- 浏览器驱动（CDP，DOM 级）：`browser_prepare`（绑定浏览器）、`get_browser_state`（读页面 / 取元素 ref）、`browser_navigate`（按 URL 打开）、`browser_click` / `browser_type`（DOM 级点击 / 输入）、`browser_pointer`（hover / 右键 / 双击 / 滚动 / 拖拽）、`browser_dialog`（处理 JS 弹窗）。',
         '',
         '**使用流程**：当用户要你操作本机 / 桌面 / 某个 App、打开窗口、点击某按钮、填写表单，或读取屏幕上可见的内容时——',
         '1. 先调用 `screen_observe` 获取当前屏幕的元素编号与坐标；',
@@ -571,7 +708,21 @@ export async function apply(ctx, config) {
         '3. 多步任务每步前重新 `screen_observe`（屏幕状态会变，且快照有有效期）。',
         '所有坐标与元素编号都来自 `screen_observe` 的输出，所见即所点。',
         '',
-        '注意：这些操作是真实且可见的，会实际改变用户屏幕状态；涉及删除 / 支付 / 转账等危险操作时你会被要求先获得用户批准，密码框不会被自动填写。请只有在用户意图明确指向“操作这台电脑”时才使用上述工具。',
+        '### 浏览器任务：优先用浏览器驱动（而非像素操作）',
+        '当任务涉及「网站 / 网页应用 / 某个 URL / 读取或校验网页上的内容」时，**优先使用浏览器驱动**（DOM 级，比 screen_observe + computer_click 点像素更可靠）。仅在以下情况退回通用 computer-use：',
+        '- 需要**登录态**或**人机协作**（v1 暂不做无头登录态桥接，直接用 computer-use 操作用户可见的浏览器窗口）；',
+        '- **Safari**（本引擎走 CDP，绑定不了 Safari，退回 computer-use 的 AX 路径）；',
+        '- 浏览器驱动不可用（浏览器未装 / 绑定失败 / 引擎拒绝）时，**不要卡在浏览器工具上，立即退回 computer-use**。',
+        '',
+        '**标准流程（默认 Chrome；用户指名 Edge 用 Edge，二者同为 Chromium 走同一驱动）**：',
+        '1. `browser_prepare`（自主 / 公开站点任务用 `{ allow_launch: true, profile: { mode: "isolated_new" } }` 在后台启动隔离浏览器；不碰用户数据）绑定 DevTools 端点，取回 `target_id` / `tab_id`；',
+        '2. `browser_navigate({ target_id, tab_id, url })` 打开目标网址；',
+        '3. `get_browser_state({ target_id, tab_id })` 读取页面 DOM 与元素 ref（用于校验 / 定位）；',
+        '4. 用 `browser_click({ target_id, tab_id, ref })`（或 x/y 视口坐标）、`browser_type({ target_id, tab_id, ref, text })`（输入，可 `replace:true` 替换整框）操作；多步之间重新 `get_browser_state` 取最新 ref（导航 / 新快照会让旧 ref 失效）。',
+        '5. 需要时 `browser_pointer`（hover / 右键 / 双击 / 滚动 / 拖拽）、`browser_dialog`（处理 JS 弹窗）。',
+        '所有 `target_id` / `tab_id` / `ref` 都来自 `browser_prepare` / `get_browser_state` 的返回，逐次透传，不要凭空编造。',
+        '',
+        '注意：这些操作是真实且可见的，会实际改变用户屏幕状态；涉及删除 / 支付 / 转账等危险操作时你会被要求先获得用户批准，密码框不会被自动填写。请只有在用户意图明确指向“操作这台电脑 / 这个网页”时才使用上述工具。',
       ].join('\n'),
     })
   })
@@ -580,7 +731,7 @@ export async function apply(ctx, config) {
   // 绝不 stop 共享 daemon（其他会话可能还在用）。
   ctx.on?.('dispose', () => { void endSessionOnUnload() })
 
-  ctx.logger?.info('dsh-computer-use: 12 个工具已注册（零配置：自动引导/起 daemon/权限/自更新）')
+  ctx.logger?.info('dsh-computer-use: 20 个工具已注册（13 通用 Computer Use + 7 浏览器驱动；零配置：自动引导/起 daemon/权限/自更新）')
 }
 
 export default { name, inject, Config, apply }

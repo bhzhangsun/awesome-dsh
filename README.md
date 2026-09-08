@@ -33,6 +33,19 @@
 | `computer_wait` | 等待 |
 | `app_list` / `app_launch` | 列出 / 启动应用 |
 
+### 🌐 浏览器驱动（CDP，DOM 级；v0.3.6 新增）
+
+网页类任务**优先用浏览器驱动**（读 DOM、按元素 ref 操作，比像素点按更可靠）。**Chrome / Edge 同为 Chromium，走同一条 CDP 路径**；Safari 走不了 CDP，相关任务自动退回 computer-use 的 AX 路径。
+
+| 工具 | 功能 |
+|------|------|
+| `browser_prepare` | 绑定浏览器 DevTools 端点：自主任务用 `isolated_new` 在后台启动隔离浏览器（不碰用户数据）；或接管用户已开的 Chrome / Edge（传 `pid`） |
+| `get_browser_state` | 读页面 DOM / 取元素 ref（定位与校验网页内容） |
+| `browser_navigate` | 按 URL 打开网页 |
+| `browser_click` / `browser_type` | DOM 级点击 / 输入（按 `ref` 或视口坐标） |
+| `browser_pointer` | hover / 右键 / 双击 / 滚动 / 拖拽 |
+| `browser_dialog` | 处理 JS 弹窗（alert / confirm / prompt） |
+
 **核心设计**：AX 树只用于"看"（定位元素），操作走**像素级虚拟光标**——光标滑行动画 + 真实点击，模拟真人操作。内置**彩虹渐变动态光标**主题（可自定义）。
 
 ### 👁 三种观察模式
@@ -181,6 +194,7 @@ dsh plugin --profile desktop remove @bhzhangsun/dsh-computer-use
 - **原生直读的图片 token 成本**：整窗截图（尤其 Retina）每次进上下文会消耗图片 token；需要高频轮询的场景建议 ax 模式 + `query` 过滤，或 `screen_zoom` 只看局部
 - **AX 安全检测仅对 element 编号模式生效**：坐标模式与无目标输入（`computer_type` / `computer_key` 落前台）由快照 TTL 与"操作可见"兜底（见上"安全设计"）
 - macOS 计算器等窗口显示屏不在 AX 树（用 `mode="native"` 直读即可）
+- **浏览器驱动兼容性（v0.3.6）**：Chrome / Edge 完整支持（同一条 CDP 路径）；**Safari 暂不支持 DOM 级驱动**（引擎是 CDP，绑定不了 Safari），相关任务退回 computer-use 的 AX 路径；v1 浏览器驱动仅面向**公开站点**，涉及登录态 / 人机协作的网页任务也退回 computer-use（无头登录态桥接留作后续）
 
 ## 🧪 开发与验证
 
