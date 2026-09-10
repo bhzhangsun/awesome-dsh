@@ -1,6 +1,6 @@
 {
   "name": "@bhzhangsun/dsh-media",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "description": "Multimedia output support for DSH: render audio/video in the conversation client.",
   "license": "MIT",
