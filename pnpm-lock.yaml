@@ -8,6 +8,15 @@ importers:
 
   .: {}
 
+  packages/dsh-computer-use:
+    devDependencies:
+      '@deepseek-ai/dsh-tools':
+        specifier: 0.1.2-rc.1
+        version: 0.1.2-rc.1(de5e1ff2d608fbe22667925341ad1dfc)
+      '@deepseek-ai/schemastery':
+        specifier: 3.18.2
+        version: 3.18.2
+
   packages/dsh-media:
     dependencies:
       zod:

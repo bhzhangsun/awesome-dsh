@@ -4,7 +4,7 @@
  * 验证：工具注册、ax 观察、native 直读（图片块 + attachments 落盘）、native 拒绝
  * （text-only route）、screen_zoom、vision 优雅降级、坐标语义标记。
  *
- * 运行：node /Users/Zhuanz/development/plugins/dsh-computer-use/verify-runtime.mjs
+ * 运行：node packages/dsh-computer-use/verify-runtime.mjs（需已安装并授权 cua-driver）
  */
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'

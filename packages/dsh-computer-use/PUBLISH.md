@@ -1,6 +1,12 @@
 # dsh-computer-use 发布清单（PUBLISH）
 
-> 状态更新：2026-08-15 · GitHub 发布已完成，npm 发布 + awesome 收录待做。
+> ⚠️ **现状（迁移后）**：本插件的源码与发布入口已迁入 monorepo
+> **https://github.com/bhzhangsun/awesome-dsh** → `packages/dsh-computer-use`，
+> npm 也从该目录发布（`cd packages/dsh-computer-use && npm publish`）。
+> 独立的 `bhzhangsun/dsh-computer-use` 仓库已废弃。
+> 下面「GitHub 发布」一节是 2026-08-15 的历史记录，其中指向独立仓库的内容不再适用。
+
+> 历史状态：2026-08-15 · GitHub 发布已完成，npm 发布 + awesome 收录待做。
 
 ## ✅ 已完成：GitHub 发布（2026-08-15）
 
@@ -28,7 +34,7 @@ git push -u origin main
 > dsh-market（插件市场）安装插件**优先走 npm tarball**（比 GitHub 下载快）。`dsh plugin add <包名>` 从 npm 解析。npm 名称 `dsh-computer-use` **已验证可用**（404 = 未占用），npm 账号已登录（jerryweizhihao）。
 
 ```bash
-cd /Users/Zhuanz/development/plugins/dsh-computer-use
+cd <awesome-dsh>/packages/dsh-computer-use
 
 # 1. 确保 package.json 的 files 字段完整（npm 只发布列出的文件）
 #    files: ["index.js", "lib/", "tools/", "cordis.patch.yml", "README.md", "VERIFICATION.md", "LICENSE"]

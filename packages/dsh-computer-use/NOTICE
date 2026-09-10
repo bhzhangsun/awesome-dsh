@@ -1,0 +1,31 @@
+@bhzhangsun/dsh-computer-use — provenance and attributions
+==========================================================
+
+This package is a fork of dsh-computer-use, substantially modified and
+maintained by bhzhangsun, and published from the awesome-dsh monorepo.
+
+  Upstream:         https://github.com/988hj7tczd-oss/dsh-computer-use
+  Upstream license: MIT — Copyright (c) 2026 dsh-computer-use contributors
+                    (see LICENSE)
+  Fork base:        ad754a9 ("feat: v0.2.0 原生视觉模型直读与 screen_zoom")
+
+  Source of truth:  https://github.com/bhzhangsun/awesome-dsh
+                    (packages/dsh-computer-use)
+  Published as:     @bhzhangsun/dsh-computer-use (npm)
+
+Runtime dependency (NOT part of this package's source)
+------------------------------------------------------
+
+  cua-driver — https://github.com/trycua/cua (MIT)
+
+  All desktop input simulation and screen observation is performed by
+  cua-driver; this plugin does not implement input simulation itself. The
+  plugin spawns the cua-driver binary, and when the binary is missing while
+  auto-install is enabled it may bootstrap it once (official installer, or a
+  GitHub Release download verified by SHA256). See the `dsh.permissions`
+  block in package.json for the exact commands, write paths and failure
+  boundaries.
+
+Upstream code changes are pulled with `git subtree pull` (see the repository
+contributor notes). This fork's README and documentation are maintained
+locally and are deliberately NOT synced from upstream.

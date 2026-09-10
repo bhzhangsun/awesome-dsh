@@ -1,6 +1,6 @@
 {
   "name": "@bhzhangsun/dsh-computer-use",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "publishConfig": {
     "access": "public"
   },
@@ -49,11 +49,13 @@
     "README.md",
     "VERIFICATION.md",
     "LICENSE",
+    "NOTICE",
     "PERMISSIONS.md",
     "docs/",
     "verify-runtime.mjs"
   ],
   "scripts": {
+    "typecheck": "node --check index.js && node --check lib/*.js",
     "check": "node --check index.js && node --check lib/*.js && bash -n install.sh && bash -n uninstall.sh"
   },
   "dependencies": {},
@@ -61,9 +63,18 @@
     "@deepseek-ai/dsh-tools": "*",
     "@deepseek-ai/schemastery": "*"
   },
+  "devDependencies": {
+    "@deepseek-ai/dsh-tools": "0.1.2-rc.1",
+    "@deepseek-ai/schemastery": "3.18.2"
+  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bhzhangsun/dsh-computer-use.git"
+    "url": "git+https://github.com/bhzhangsun/awesome-dsh.git",
+    "directory": "packages/dsh-computer-use"
+  },
+  "homepage": "https://github.com/bhzhangsun/awesome-dsh/tree/main/packages/dsh-computer-use#readme",
+  "bugs": {
+    "url": "https://github.com/bhzhangsun/awesome-dsh/issues"
   },
   "engines": {
     "node": ">=22.18.0"

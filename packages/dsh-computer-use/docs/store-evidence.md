@@ -43,7 +43,7 @@ rm -rf "$DSH_HOME"
 
 | 信号 | 响应 |
 |---|---|
-| 规范仓库（canonical repository） | package.json `repository` → `git+https://github.com/bhzhangsun/dsh-computer-use.git`（与仓库一致） |
+| 规范仓库（canonical repository） | package.json `repository` → `git+https://github.com/bhzhangsun/awesome-dsh.git`（`directory: packages/dsh-computer-use`，与源码所在仓库一致） |
 | Node 兼容性声明 | `engines.node >= 22.18.0` + `dsh.compatibility.node` |
 | 供应链审查 | 依赖仅 `@deepseek-ai/dsh-tools` + `@deepseek-ai/schemastery`（官方生态）；无 runtime/optional 第三方依赖；peer 层面无 |
 | 文件权限信号 | 运行期 `spawn` cua-driver（核心能力，非数据访问）；**有界引导**向 `~/Library/Caches/dsh-computer-use/bin` 一次性写入 cua-driver 二进制（及可选自更新），已在 `PERMISSIONS.md` 声明 |

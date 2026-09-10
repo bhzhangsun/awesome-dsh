@@ -219,13 +219,15 @@ DSH_HOME=$PWD/.dsh-p0 ELECTRON_RUN_AS_NODE=1 \
 
 MIT
 
+本插件是 **[dsh-computer-use](https://github.com/988hj7tczd-oss/dsh-computer-use)**（MIT）的 fork，由 bhzhangsun 大幅修改并维护。上游来源、fork 基线提交、以及运行时依赖 cua-driver 的声明见 [`NOTICE`](./NOTICE)。
+
 ---
 
 ## 🌐 相关链接
 
-- GitHub：https://github.com/bhzhangsun/dsh-computer-use
-- Gitee 镜像（国内加速）：https://gitee.com/jerryweizhihao/dsh-computer-use
+- 源码（monorepo）：https://github.com/bhzhangsun/awesome-dsh → `packages/dsh-computer-use`
 - npm：https://www.npmjs.com/package/@bhzhangsun/dsh-computer-use
+- 上游项目：https://github.com/988hj7tczd-oss/dsh-computer-use
 - AI House 独立站（AI 工具排行榜）：https://www.aibunkhouse.com/
 - harness-desktop（DeepSeek Harness 桌面端）：https://github.com/988hj7tczd-oss/harness-desktop
 - awesome-dsh-plugin（DeepSeek Harness 插件精选列表）：https://github.com/988hj7tczd-oss/awesome-dsh-plugin
