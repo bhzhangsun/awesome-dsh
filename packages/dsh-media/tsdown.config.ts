@@ -17,17 +17,14 @@ export default defineConfig({
   dts: false,
   clean: false,
   sourcemap: true,
+  // Only packages the client half actually imports: React and Cordis are
+  // provided by the DSH client runtime, so they must stay unbundled.
   external: [
     'react',
     'react/jsx-runtime',
     'react-dom',
     'react-dom/client',
     '@deepseek-ai/cordis',
-    '@deepseek-ai/dsh-client-locale/client',
-    '@deepseek-ai/dsh-client-ui-renderer/client',
-    '@deepseek-ai/dsh-client-ui-chat/client',
-    '@deepseek-ai/dsh-client-ui-conversation/client',
-    '@deepseek-ai/dsh-client-ui-slots',
   ],
   outputOptions: {
     entryFileNames: 'client.js',
