@@ -28,6 +28,7 @@ pnpm install
 | --- | --- | --- |
 | [`@bhzhangsun/dsh-media`](./packages/dsh-media) | Renders audio/video in the assistant message body: a `media_render` tool plus a `dsh-media` fence replaced by a block-level player. | TypeScript (tsdown client bundle) |
 | [`@bhzhangsun/dsh-computer-use`](./packages/dsh-computer-use) | Computer Use: virtual-cursor desktop automation with native vision, 12 model-facing tools, backed by cua-driver. | Plain ESM JavaScript, no build step — a fork of [`988hj7tczd-oss/dsh-computer-use`](https://github.com/988hj7tczd-oss/dsh-computer-use), see its `NOTICE` |
+| [`@bhzhangsun/dsh-agent-server`](./packages/dsh-agent-server) | Turns dsh into a headless AI agent server: installs the `server` profile (HTTP/WS API, browser GUI off) with the `server` agent preset (pure-reasoning orchestration), then `dsh --profile server`. Ships a reference reverse proxy for business-owned, per-route auth. | Plain ESM JavaScript, no build step |
 
 ## Layout
 
@@ -42,7 +43,8 @@ pnpm install
 ├── scripts/                # repository tooling
 └── packages/               # each plugin package lives here
     ├── dsh-media/          # TypeScript package (tsdown client bundle)
-    └── dsh-computer-use/   # plain-ESM JavaScript package (no build step)
+    ├── dsh-computer-use/   # plain-ESM JavaScript package (no build step)
+    └── dsh-agent-server/   # plain-ESM JavaScript package (installs a dsh profile + preset)
 ```
 
 ## Package conventions
@@ -54,10 +56,11 @@ pnpm install
 - Each package exposes the standard lifecycle scripts: `build`, `typecheck`,
   `test`, `clean`. Run them across the whole workspace with
   `pnpm -r <script>` (e.g. `pnpm build`).
-- **Exception:** `packages/dsh-computer-use` is plain ESM JavaScript with no
-  build step. It therefore exposes only `typecheck` (a `node --check` syntax
-  gate) and `check`, and `pnpm -r build` simply skips it. Prefer `.js` here
-  over introducing a bundler for a fork that tracks an upstream written in JS.
+- **Exception:** `packages/dsh-computer-use` and `packages/dsh-agent-server` are
+  plain ESM JavaScript with no build step. They therefore expose `typecheck` (a
+  `node --check` syntax gate), `test`, and `check`, and `pnpm -r build` simply
+  skips them. Prefer `.js` here over introducing a bundler for a fork that tracks
+  an upstream written in JS, or for an installer that ships data files.
 
 ## Adding a plugin package
 
@@ -68,13 +71,14 @@ pnpm install
 
 ## Releases and tags
 
-Two packages ship from this repository, so release tags are namespaced per
+Three packages ship from this repository, so release tags are namespaced per
 package — never a bare `vX.Y.Z`:
 
 | Tag | Package |
 | --- | --- |
 | `media-vX.Y.Z` | `@bhzhangsun/dsh-media` |
 | `computer-use-vX.Y.Z` | `@bhzhangsun/dsh-computer-use` |
+| `agent-server-vX.Y.Z` | `@bhzhangsun/dsh-agent-server` |
 
 (`v0.1.0` and `v0.1.1` predate this convention and remain as published history.)
 
@@ -87,10 +91,11 @@ now prevent that:
 1. The `cu-upstream` remote is configured with `tagOpt = --no-tags`, and the
    foreign tags were deleted, so a normal `git fetch` / `git pull` cannot bring
    them back.
-2. `.githooks/pre-push` rejects any tag that is not `media-v*` or
-   `computer-use-v*`, so an accidental `--tags` fails loudly instead of
-   silently publishing someone else's tags. `pnpm install` activates it through
-   the root `prepare` script; run `pnpm hooks` to (re)install it by hand.
+2. `.githooks/pre-push` rejects any tag that is not `media-v*`,
+   `computer-use-v*` or `agent-server-v*`, so an accidental `--tags` fails
+   loudly instead of silently publishing someone else's tags. `pnpm install`
+   activates it through the root `prepare` script; run `pnpm hooks` to
+   (re)install it by hand.
 
 Push the tag you actually mean:
 
@@ -103,13 +108,14 @@ Publishing is per package:
 ```sh
 cd packages/dsh-media && npm publish
 cd packages/dsh-computer-use && npm publish
+cd packages/dsh-agent-server && npm publish
 ```
 
 For defence in depth, a GitHub **tag ruleset** makes the foreign shape
 impossible to create server-side at all: Settings → Rules → Rulesets → New tag
 ruleset, target *Tags*, include pattern `v*`, add the **Restrict creations**
-rule, and leave the bypass list empty. (`v*` cannot match `media-v*` or
-`computer-use-v*`.)
+rule, and leave the bypass list empty. (`v*` cannot match `media-v*`,
+`computer-use-v*` or `agent-server-v*`.)
 
 ## Upstream sync (dsh-computer-use)
 

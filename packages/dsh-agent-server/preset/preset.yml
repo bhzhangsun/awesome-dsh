@@ -1,0 +1,2 @@
+name: Server Agent
+description: 常驻 headless agent server 的纯推理/编排 Agent：无 Shell、无文件编辑、无网页检索，仅保留目标追踪、任务列表、向调用方发问与子代理/工作流编排，面向 API 调用方。

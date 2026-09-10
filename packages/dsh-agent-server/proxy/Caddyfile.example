@@ -1,0 +1,93 @@
+# Caddyfile.example — network exposure for @bhzhangsun/dsh-agent-server
+#
+# Topology: Caddy binds the network and enforces auth; dsh stays on loopback.
+#
+#   client ──TLS+auth──► Caddy :443 ──plain HTTP──► dsh 127.0.0.1:3080
+#
+# Auth is business-owned: every rule below delegates verification to a service
+# YOU run (`authsvc`), so the policy lives in your code, not in this file. One
+# `forward_auth` per route is the "different auth per interface" knob.
+#
+# dsh must be started with the public authority declared, or its /api trust
+# fence answers 403 to every request:
+#
+#   dsh --profile server --trusted-host agent.example.com
+#
+# See ../docs/NETWORK-AND-AUTH.md for why.
+
+{
+	email ops@example.com
+}
+
+agent.example.com {
+	encode gzip
+
+	# ── 1. The live stream. Highest privilege: it drives the session. ──────────
+	# /api/remote.mux is a WebSocket upgrade; Caddy's reverse_proxy forwards the
+	# upgrade automatically, so this block is only about auth.
+	@mux path /api/remote.mux
+	forward_auth @mux authsvc:9000 {
+		uri /verify/jwt
+		# The verifier returns 200 to allow, 401/403 to deny, and may hand
+		# identity back to the app.
+		copy_headers X-Auth-Subject X-Auth-Scopes
+	}
+
+	# ── 2. HTTP RPC. A different policy on the same prefix. ───────────────────
+	@api path /api/*
+	forward_auth @api authsvc:9000 {
+		uri /verify/apikey
+		copy_headers X-Auth-Subject
+	}
+
+	# ── 3. Client bundles. Served only if the caller holds a session. ─────────
+	# Delete this block to deny plugin assets outright.
+	@plugins path /plugins/*
+	forward_auth @plugins authsvc:9000 {
+		uri /verify/session
+	}
+
+	# ── 4. Everything else is closed. ─────────────────────────────────────────
+	# This profile disables the browser GUI, so the shell and static fallback
+	# have nothing useful to serve to a remote caller.
+	handle {
+		respond 404
+	}
+
+	# ── 5. The upstream. ──────────────────────────────────────────────────────
+	# `header_up Host {host}` keeps the caller's original Host, which is what
+	# the dsh trust fence checks — do NOT rewrite it to 127.0.0.1, or browser
+	# requests fail the Origin comparison.
+	reverse_proxy 127.0.0.1:3080 {
+		header_up Host {host}
+		# Stream immediately instead of buffering (streaming RPC responses).
+		flush_interval -1
+		# Long-lived upgrade support; must exceed dsh's 2000 ms WS heartbeat.
+		transport http {
+			read_timeout 1h
+			write_timeout 1h
+		}
+	}
+}
+
+# ── The verifier contract ─────────────────────────────────────────────────────
+#
+# `authsvc:9000` is yours to implement. It receives the original request with the
+# probe path from `uri`, and must:
+#
+#   200  → allow the request
+#   401  → challenge (Caddy returns it to the client)
+#   403  → deny
+#
+# Example verifier routes:
+#
+#   POST /verify/jwt      Authorization: Bearer <jwt>   → verify signature+exp
+#   POST /verify/apikey   X-API-Key: <key>              → look up a key record
+#   POST /verify/session  Cookie: dsh_session=<id>      → verify a session
+#
+# For a quick internal-only check with no verifier service, swap a rule for
+# Caddy's built-in basic auth:
+#
+#   basic_auth @api {
+#       ops $2a$14$<bcrypt-hash-from-caddy-hash-password>
+#   }

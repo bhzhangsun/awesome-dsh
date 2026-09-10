@@ -2,12 +2,12 @@
 #
 # Reject pushes that would publish tags this repository does not own.
 #
-# Release tags in this monorepo are namespaced per package: `media-v*` and
-# `computer-use-v*`. Every other tag is foreign — most importantly the tags that
-# a plain `git fetch cu-upstream` may leave behind from the upstream project —
-# and must never reach our remote. `git push --tags` is therefore unsafe here:
-# this hook makes it fail loudly instead of silently publishing someone else's
-# tags.
+# Release tags in this monorepo are namespaced per package: `media-v*`,
+# `computer-use-v*` and `agent-server-v*`. Every other tag is foreign — most
+# importantly the tags that a plain `git fetch cu-upstream` may leave behind from
+# the upstream project — and must never reach our remote. `git push --tags` is
+# therefore unsafe here: this hook makes it fail loudly instead of silently
+# publishing someone else's tags.
 #
 # Activated by `pnpm install` (see scripts/install-git-hooks.mjs), or manually:
 #   git config core.hooksPath .githooks
@@ -30,15 +30,16 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 
   tag=${remote_ref#refs/tags/}
   case "$tag" in
-    media-v[0-9]*|computer-use-v[0-9]*) continue ;;
+    media-v[0-9]*|computer-use-v[0-9]*|agent-server-v[0-9]*) continue ;;
   esac
 
   printf '%s\n' \
     "pre-push: refusing to push tag '$tag'." \
     "" \
-    "  This repository only publishes release tags named 'media-v*' or" \
-    "  'computer-use-v*'. Foreign tags — for example 'v0.3.0', which a plain" \
-    "  'git fetch cu-upstream' can leave behind — must stay local." \
+    "  This repository only publishes release tags named 'media-v*'," \
+    "  'computer-use-v*' or 'agent-server-v*'. Foreign tags — for example" \
+    "  'v0.3.0', which a plain 'git fetch cu-upstream' can leave behind — must" \
+    "  stay local." \
     "" \
     "  Push the tag you actually mean instead of using 'git push --tags':" \
     "    git push origin computer-use-v0.3.8" \

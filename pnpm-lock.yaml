@@ -8,6 +8,8 @@ importers:
 
   .: {}
 
+  packages/dsh-agent-server: {}
+
   packages/dsh-computer-use:
     devDependencies:
       '@deepseek-ai/dsh-tools':

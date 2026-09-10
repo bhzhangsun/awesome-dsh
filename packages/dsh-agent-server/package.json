@@ -1,0 +1,45 @@
+{
+  "name": "@bhzhangsun/dsh-agent-server",
+  "version": "0.1.0",
+  "private": false,
+  "description": "One install for a headless dsh AI agent server: ships the `server` profile (pure API server, browser GUI off) together with the `server` agent preset (pure-reasoning orchestration agent). Boot with `dsh --profile server`.",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "type": "module",
+  "bin": {
+    "dsh-agent-server": "bin/install.js"
+  },
+  "files": [
+    "bin/**",
+    "profile/**",
+    "preset/**",
+    "proxy/**",
+    "docs/**",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "scripts": {
+    "typecheck": "node --check bin/install.js && node --check proxy/auth-proxy.mjs",
+    "test": "node --test",
+    "check": "pnpm run typecheck && pnpm run test",
+    "install:server": "node ./bin/install.js",
+    "uninstall:server": "node ./bin/install.js --uninstall",
+    "postinstall": "node ./bin/install.js"
+  },
+  "keywords": [
+    "deepseek",
+    "dsh",
+    "plugin",
+    "profile",
+    "agent-preset",
+    "agent-server",
+    "headless",
+    "api"
+  ]
+}

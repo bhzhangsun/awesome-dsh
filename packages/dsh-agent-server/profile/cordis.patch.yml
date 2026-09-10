@@ -1,0 +1,169 @@
+# dsh-profile-server / cordis.patch.yml
+#
+# Turns the web profile into a PURE API server: the browser GUI is disabled,
+# while the HTTP/WS transport and the Typert Remote controllers stay.
+#
+# WHY this works:
+#   - The `/api` transport is carried by `connection` (@deepseek-ai/dsh-client-connection),
+#     whose NODE half binds the gateway to the webserver under `/api` and whose
+#     browser half is only the fetch/SSE client. We keep the node half, so the API
+#     surface survives with no browser present.
+#   - `dsh-client-ui-*`, `modules` (client-modules), `client-hmr`, and
+#     `cordis-client-runner` are purely browser-surface rows. Disabling them drops
+#     the GUI and the `/plugins/<id>/client.js` bundle routing without touching
+#     the gateway, controllers, or session wiring.
+#   - `web-runtime` (@deepseek-ai/dsh-web-app) is kept because `connection`
+#     injects `webRuntime` (trustedHosts / bind). We only turn off the auto-open
+#     browser; it still prints the URL line.
+#
+# The `server` AGENT preset supplies the tool set. The base web-app layer moved
+# the agent-plane rows behind presets, so choosing the `server` preset in a
+# session (or as the roster default, below) gives the pure-reasoning agent.
+#
+# HOW TO USE:
+#   Standalone — this profile already applies the patch, so no --patch is needed:
+#     dsh --profile server
+#
+#   Or overlay it onto an existing `web` boot instead of using this profile:
+#     dsh --profile web --patch ./cordis.patch.yml
+#
+#   Then call the API externally over:
+#     ws://<host>:<port>/api/remote.mux   (Typert Remote RPC)
+#     http://<host>:<port>/api/...        (HTTP RPC bridge)
+
+# ── keep the server transport, close the browser surface ────────────────────
+
+- id: web-runtime
+  config:
+    openBrowser: false
+    printUrl: true
+    surfaceContext: true
+
+# Browser GUI rows — disable each by id. A row absent from a later layer would
+# silently reappear, so we disable rather than delete.
+
+- id: client-hmr
+  disabled: true
+
+- id: modules
+  disabled: true
+
+- id: cordis-client-runner
+  disabled: true
+
+- id: ui-theme
+  disabled: true
+
+- id: locale
+  disabled: true
+
+- id: ui-layout
+  disabled: true
+
+- id: ui-renderer
+  disabled: true
+
+- id: ui-session
+  disabled: true
+
+- id: ui-sidebar
+  disabled: true
+
+- id: ui-settings
+  disabled: true
+
+- id: ui-settings-general
+  disabled: true
+
+- id: ui-settings-models
+  disabled: true
+
+- id: ui-settings-plugin-inventory
+  disabled: true
+
+- id: ui-conversation
+  disabled: true
+
+- id: ui-approval
+  disabled: true
+
+- id: ui-chat
+  disabled: true
+
+- id: ui-brand-official
+  disabled: true
+
+- id: ui-attachment
+  disabled: true
+
+- id: ui-tool
+  disabled: true
+
+- id: ui-cordis
+  disabled: true
+
+- id: ui-workflow-run
+  disabled: true
+
+- id: ui-deliverables
+  disabled: true
+
+- id: ui-workspace
+  disabled: true
+
+- id: ui-input-trigger
+  disabled: true
+
+- id: ui-commands
+  disabled: true
+
+- id: ui-skill
+  disabled: true
+
+- id: ui-subagent
+  disabled: true
+
+- id: ui-reference
+  disabled: true
+
+- id: ui-schedule
+  disabled: true
+
+- id: ui-jobs
+  disabled: true
+
+- id: ui-goal
+  disabled: true
+
+- id: ui-message-feedback
+  disabled: true
+
+- id: ui-model-selection
+  disabled: true
+
+- id: ui-permission
+  disabled: true
+
+- id: ui-agent-preset
+  disabled: true
+
+- id: ui-settings-plugins
+  disabled: true
+
+- id: ui-plan
+  disabled: true
+
+- id: ui-user-questions
+  disabled: true
+
+- id: ui-trajectory
+  disabled: true
+
+# ── default the roster to the `server` preset ───────────────────────────────
+# The `server` preset is discovered automatically from $DSH_HOME/.agent-presets/
+# (includeUserRoot: true). Making it the default means every session created on
+# this profile boots the pure-reasoning agent without an explicit pick or flag.
+
+- id: agent-presets
+  config:
+    default: server
