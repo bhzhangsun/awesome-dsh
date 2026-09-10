@@ -1,9 +1,22 @@
-name: CI
+# CI for packages/dsh-computer-use.
+#
+# Moved here from the package's own `.github/` directory: GitHub only runs
+# workflows from the repository root, so a workflow inside a package directory
+# never executed after the plugin was imported into this monorepo.
+#
+# The package is plain ESM JavaScript with no build step, so this job needs no
+# install step — just syntax gates plus the cursor-theme generator check.
+
+name: computer-use CI
 
 on:
   push:
     branches: [main]
   pull_request:
+
+defaults:
+  run:
+    working-directory: packages/dsh-computer-use
 
 jobs:
   check:
@@ -14,7 +27,9 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # The plugin declares engines.node >= 22.18.0, and this monorepo
+          # requires ^22.19.0 || >=24.0.0 (the upstream workflow used 20).
+          node-version: 22
 
       - name: JS syntax check (node --check)
         run: |

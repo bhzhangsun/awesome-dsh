@@ -37,6 +37,9 @@ pnpm install
 ├── pnpm-workspace.yaml     # declares packages/* as workspace members
 ├── tsconfig.base.json      # shared TS compiler options for packages
 ├── .npmrc                  # pnpm settings
+├── .githooks/              # committed git hooks (see Releases and tags)
+├── .github/workflows/      # CI — GitHub only runs workflows from the root
+├── scripts/                # repository tooling
 └── packages/               # each plugin package lives here
     ├── dsh-media/          # TypeScript package (tsdown client bundle)
     └── dsh-computer-use/   # plain-ESM JavaScript package (no build step)
@@ -62,3 +65,75 @@ pnpm install
 2. Add a `package.json` with `"name": "@bhzhangsun/plugin-example"`,
    a `dsh` field for any client entry points, and the standard scripts.
 3. Run `pnpm install` to link it into the workspace.
+
+## Releases and tags
+
+Two packages ship from this repository, so release tags are namespaced per
+package — never a bare `vX.Y.Z`:
+
+| Tag | Package |
+| --- | --- |
+| `media-vX.Y.Z` | `@bhzhangsun/dsh-media` |
+| `computer-use-vX.Y.Z` | `@bhzhangsun/dsh-computer-use` |
+
+(`v0.1.0` and `v0.1.1` predate this convention and remain as published history.)
+
+**Never run `git push --tags`.** `packages/dsh-computer-use` is a fork, so this
+repository also fetches from an upstream that tags its own releases. A plain tag
+fetch once left those foreign tags (`v0.3.0`, `v0.3.1`) in this repository, and
+`--tags` would have published them as if they were our releases. Two mechanisms
+now prevent that:
+
+1. The `cu-upstream` remote is configured with `tagOpt = --no-tags`, and the
+   foreign tags were deleted, so a normal `git fetch` / `git pull` cannot bring
+   them back.
+2. `.githooks/pre-push` rejects any tag that is not `media-v*` or
+   `computer-use-v*`, so an accidental `--tags` fails loudly instead of
+   silently publishing someone else's tags. `pnpm install` activates it through
+   the root `prepare` script; run `pnpm hooks` to (re)install it by hand.
+
+Push the tag you actually mean:
+
+```sh
+git tag -a computer-use-v0.3.8 -m "..." && git push origin computer-use-v0.3.8
+```
+
+Publishing is per package:
+
+```sh
+cd packages/dsh-media && npm publish
+cd packages/dsh-computer-use && npm publish
+```
+
+For defence in depth, a GitHub **tag ruleset** makes the foreign shape
+impossible to create server-side at all: Settings → Rules → Rulesets → New tag
+ruleset, target *Tags*, include pattern `v*`, add the **Restrict creations**
+rule, and leave the bypass list empty. (`v*` cannot match `media-v*` or
+`computer-use-v*`.)
+
+## Upstream sync (dsh-computer-use)
+
+`packages/dsh-computer-use` tracks
+[`988hj7tczd-oss/dsh-computer-use`](https://github.com/988hj7tczd-oss/dsh-computer-use)
+through `git subtree`, so the fork's own history — and the shared upstream base
+`ad754a9` (v0.2.0) — is preserved here. The two sides have diverged
+independently, so expect real conflicts, not a fast-forward.
+
+```sh
+git fetch cu-upstream
+git subtree pull --prefix=packages/dsh-computer-use cu-upstream main
+```
+
+Keep these deliberate divergences when resolving conflicts:
+
+- **Our README and docs win.** Upstream rewrites its README often; ours is the
+  product README for this package. On conflict, keep ours.
+- **`package-lock.json` stays deleted** — this is a pnpm workspace, and a second
+  lockfile only misleads. Upstream tracks it.
+- **`.github/workflows/` lives at the repository root**, because GitHub runs
+  workflows only from the root. Upstream's `packages/dsh-computer-use/.github/`
+  copy stays removed; the root `computer-use-ci.yml` is what actually runs.
+
+Upstream is pulled, never pushed: the personal fork was retired, so there is no
+`git subtree push` target. Contributing a change back upstream means re-forking
+first.

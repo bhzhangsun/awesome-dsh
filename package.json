@@ -9,6 +9,8 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "scripts": {
+    "prepare": "node scripts/install-git-hooks.mjs",
+    "hooks": "node scripts/install-git-hooks.mjs",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
