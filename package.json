@@ -1,0 +1,24 @@
+{
+  "name": "awesome-dsh",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A pnpm monorepo of DSH (DeepSeek Harness) plugins published as npm packages.",
+  "type": "module",
+  "packageManager": "pnpm@11.8.0",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "clean": "pnpm -r clean"
+  },
+  "keywords": [
+    "deepseek",
+    "dsh",
+    "plugin",
+    "monorepo"
+  ],
+  "license": "MIT"
+}

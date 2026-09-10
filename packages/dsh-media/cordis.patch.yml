@@ -1,0 +1,17 @@
+# @bhzhangsun/dsh-media bundle patch
+#
+# Consumed as the `dsh.bundle.patch` layer: when the plugin is installed through
+# the official CLI —
+#
+#   dsh plugin --profile <name> add @bhzhangsun/dsh-media
+#
+# — the command reconciles `dsh.profile.bundles` against installed packages and,
+# seeing this declaration, appends `@bhzhangsun/dsh-media` to the bundle stack.
+# The profile boot then merges THIS `insert` row so the host half of the plugin is
+# loaded as a Cordis plugin (resolved from the profile's node_modules by `name`).
+# The client half is wired through the package's `dsh.client` field.
+#
+# No profile file edits are needed — one command installs and mounts.
+- insert:
+    - id: '@bhzhangsun/dsh-media'
+      name: '@bhzhangsun/dsh-media'
