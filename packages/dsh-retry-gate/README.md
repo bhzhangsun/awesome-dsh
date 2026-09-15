@@ -151,7 +151,7 @@ Client 平面在某个 Slot 里渲染状态，目前只有日志可查。
 必须共用同一份账本；放进 preset 会退化成"每会话各算各的账"。
 
 ```sh
-# 方式一：从 npm 安装（已发布：@bhzhangsun/dsh-retry-gate@0.1.0）
+# 方式一：从 npm 安装（已发布：@bhzhangsun/dsh-retry-gate@0.2.0）
 dsh plugin --profile desktop add @bhzhangsun/dsh-retry-gate
 
 # 方式二：本地开发，link 进 profile（与 @bhzhangsun/dsh-media 同款）

@@ -1,6 +1,6 @@
 {
   "name": "@bhzhangsun/dsh-retry-gate",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "description": "Provider-agnostic admission gate for per-model TPM/RPM limits: paces concurrent sessions instead of letting every one of them collide with a 429. Learns each model's real ceiling from the first 429 it observes, instead of trusting configured assumptions.",
   "license": "MIT",
