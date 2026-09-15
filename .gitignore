@@ -6,10 +6,6 @@ dist/
 lib/
 *.tsbuildinfo
 
-# 例外：dsh-retry-gate 没有构建步骤，它的 lib/ 就是源码本身。
-# 上面的 `lib/` 是为 tsdown 产物写的（见 dsh-media），不适用于纯 ESM 包。
-!packages/dsh-retry-gate/lib/
-
 # Logs
 *.log
 npm-debug.log*

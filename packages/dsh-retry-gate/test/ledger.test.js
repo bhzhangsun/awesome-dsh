@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { ModelBucket, createRegistry, billedTokens } from '../lib/ledger.js';
+import { ModelBucket, createRegistry, billedTokens } from '../src/ledger.js';
 
 const T0 = 1_800_000_000_000;
 
@@ -213,7 +213,7 @@ test('触发点低于「已成功放行过的窗口」= 账本漏记流量的信
 });
 
 test('估算：content 是纯字符串时必须照样估，不能静默按 0 算', async () => {
-  const { localEstimateMessage } = await import('../lib/estimate.js');
+  const { localEstimateMessage } = await import('../src/estimate.js');
   // 4000 字符：4000/4 + 4(块开销) + 4(角色框架) = 1008；旧实现只返回 4。
   assert.equal(localEstimateMessage({ role: 'user', content: 'x'.repeat(4_000) }), 1_008);
   // block 形态：400/4 + 4(块) + 4(框架) = 108。两种写法量级一致，不会差几十倍。

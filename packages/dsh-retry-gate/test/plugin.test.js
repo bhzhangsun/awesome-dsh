@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { apply } from '../lib/index.js';
+import { apply } from '../src/index.js';
 
 /** 最小的假 Cordis 上下文：只记录注册，不启动任何真实运行时。 */
 function fakeCtx() {

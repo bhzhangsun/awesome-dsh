@@ -65,11 +65,11 @@ pnpm install
   introducing a bundler for a fork that tracks an upstream written in JS, for an
   installer that ships data files, or for a plugin whose source *is* its
   published artifact (see the next bullet).
-- ⚠️ `lib/` is gitignored repository-wide because `dsh-media` builds into it.
-  A no-build package that publishes `lib/` as its **source** must re-include it
-  — `dsh-retry-gate` does this with `!packages/dsh-retry-gate/lib/` in
-  `.gitignore`. Forgetting this silently drops the package's entire source from
-  the commit (it stays untracked, and `git status` looks clean).
+- ⚠️ `lib/` is gitignored repository-wide because `dsh-media` builds into it, so
+  a no-build package must keep its source in **`src/`** and publish from there
+  (`dsh-retry-gate` does). Source placed in `lib/` stays untracked unless
+  `.gitignore` is given an exception — and it fails silently: `git status` looks
+  clean while the package's entire source is missing from the commit.
 
 ## Adding a plugin package
 

@@ -9,15 +9,15 @@
     "registry": "https://registry.npmjs.org"
   },
   "type": "module",
-  "main": "lib/index.js",
+  "main": "src/index.js",
   "exports": {
-    ".": "./lib/index.js",
-    "./ledger": "./lib/ledger.js",
-    "./estimate": "./lib/estimate.js",
+    ".": "./src/index.js",
+    "./ledger": "./src/ledger.js",
+    "./estimate": "./src/estimate.js",
     "./package.json": "./package.json"
   },
   "files": [
-    "lib/**",
+    "src/**",
     "cordis.patch.yml",
     "README.md",
     "LICENSE",
@@ -46,7 +46,7 @@
   },
   "scripts": {
     "test": "node --test test/*.test.js",
-    "typecheck": "node --check lib/index.js && node --check lib/ledger.js && node --check lib/estimate.js",
+    "typecheck": "node --check src/index.js && node --check src/ledger.js && node --check src/estimate.js",
     "check": "npm run typecheck && npm test"
   },
   "keywords": [
