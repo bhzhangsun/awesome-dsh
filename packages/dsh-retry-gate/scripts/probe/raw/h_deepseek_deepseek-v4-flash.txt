@@ -1,0 +1,11 @@
+HTTP/1.1 200 OK
+Date: Mon, 14 Sep 2026 05:59:09 GMT
+Content-Type: application/json
+Content-Length: 403
+Connection: keep-alive
+Access-Control-Allow-Headers: Content-Type, Authorization, X-Request-ID
+Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS
+Access-Control-Allow-Origin: *
+X-Request-Id: ca0248d4-e7af-4402-928c-de239729f066
+X-Trace-Id: ca0248d4e7af4402928cde239729f066
+

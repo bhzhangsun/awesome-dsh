@@ -1,0 +1,6 @@
+HTTP/1.1 402 Payment Required
+Date: Mon, 14 Sep 2026 05:59:09 GMT
+Content-Type: application/json
+Content-Length: 607
+Connection: keep-alive
+

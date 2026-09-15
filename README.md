@@ -29,6 +29,7 @@ pnpm install
 | [`@bhzhangsun/dsh-media`](./packages/dsh-media) | Renders audio/video in the assistant message body: a `media_render` tool plus a `dsh-media` fence replaced by a block-level player. | TypeScript (tsdown client bundle) |
 | [`@bhzhangsun/dsh-computer-use`](./packages/dsh-computer-use) | Computer Use: virtual-cursor desktop automation with native vision, 12 model-facing tools, backed by cua-driver. | Plain ESM JavaScript, no build step — a fork of [`988hj7tczd-oss/dsh-computer-use`](https://github.com/988hj7tczd-oss/dsh-computer-use), see its `NOTICE` |
 | [`@bhzhangsun/dsh-agent-server`](./packages/dsh-agent-server) | Turns dsh into a headless AI agent server: installs the `server` profile (HTTP/WS API, browser GUI off) with the `server` agent preset (pure-reasoning orchestration), then `dsh --profile server`. Ships a reference reverse proxy for business-owned, per-route auth. | Plain ESM JavaScript, no build step |
+| [`@bhzhangsun/dsh-retry-gate`](./packages/dsh-retry-gate) | Admission gate for per-model TPM/RPM limits: concurrent sessions queue at `llm/stream` instead of all colliding with the same 429. Learns each model's real ceiling from the first 429 it sees, so the configured limit is only a starting point. | Plain ESM JavaScript, no build step, zero dependencies |
 
 ## Layout
 
@@ -44,7 +45,8 @@ pnpm install
 └── packages/               # each plugin package lives here
     ├── dsh-media/          # TypeScript package (tsdown client bundle)
     ├── dsh-computer-use/   # plain-ESM JavaScript package (no build step)
-    └── dsh-agent-server/   # plain-ESM JavaScript package (installs a dsh profile + preset)
+    ├── dsh-agent-server/   # plain-ESM JavaScript package (installs a dsh profile + preset)
+    └── dsh-retry-gate/     # plain-ESM JavaScript package (a host-plane `llm/stream` gate)
 ```
 
 ## Package conventions
@@ -56,11 +58,18 @@ pnpm install
 - Each package exposes the standard lifecycle scripts: `build`, `typecheck`,
   `test`, `clean`. Run them across the whole workspace with
   `pnpm -r <script>` (e.g. `pnpm build`).
-- **Exception:** `packages/dsh-computer-use` and `packages/dsh-agent-server` are
-  plain ESM JavaScript with no build step. They therefore expose `typecheck` (a
-  `node --check` syntax gate), `test`, and `check`, and `pnpm -r build` simply
-  skips them. Prefer `.js` here over introducing a bundler for a fork that tracks
-  an upstream written in JS, or for an installer that ships data files.
+- **Exception:** `packages/dsh-computer-use`, `packages/dsh-agent-server` and
+  `packages/dsh-retry-gate` are plain ESM JavaScript with no build step. They
+  therefore expose `typecheck` (a `node --check` syntax gate), `test`, and
+  `check`, and `pnpm -r build` simply skips them. Prefer `.js` here over
+  introducing a bundler for a fork that tracks an upstream written in JS, for an
+  installer that ships data files, or for a plugin whose source *is* its
+  published artifact (see the next bullet).
+- ⚠️ `lib/` is gitignored repository-wide because `dsh-media` builds into it.
+  A no-build package that publishes `lib/` as its **source** must re-include it
+  — `dsh-retry-gate` does this with `!packages/dsh-retry-gate/lib/` in
+  `.gitignore`. Forgetting this silently drops the package's entire source from
+  the commit (it stays untracked, and `git status` looks clean).
 
 ## Adding a plugin package
 
@@ -71,7 +80,7 @@ pnpm install
 
 ## Releases and tags
 
-Three packages ship from this repository, so release tags are namespaced per
+Four packages ship from this repository, so release tags are namespaced per
 package — never a bare `vX.Y.Z`:
 
 | Tag | Package |
@@ -79,6 +88,7 @@ package — never a bare `vX.Y.Z`:
 | `media-vX.Y.Z` | `@bhzhangsun/dsh-media` |
 | `computer-use-vX.Y.Z` | `@bhzhangsun/dsh-computer-use` |
 | `agent-server-vX.Y.Z` | `@bhzhangsun/dsh-agent-server` |
+| `retry-gate-vX.Y.Z` | `@bhzhangsun/dsh-retry-gate` |
 
 (`v0.1.0` and `v0.1.1` predate this convention and remain as published history.)
 
@@ -92,10 +102,10 @@ now prevent that:
    foreign tags were deleted, so a normal `git fetch` / `git pull` cannot bring
    them back.
 2. `.githooks/pre-push` rejects any tag that is not `media-v*`,
-   `computer-use-v*` or `agent-server-v*`, so an accidental `--tags` fails
-   loudly instead of silently publishing someone else's tags. `pnpm install`
-   activates it through the root `prepare` script; run `pnpm hooks` to
-   (re)install it by hand.
+   `computer-use-v*`, `agent-server-v*` or `retry-gate-v*`, so an accidental
+   `--tags` fails loudly instead of silently publishing someone else's tags.
+   `pnpm install` activates it through the root `prepare` script; run
+   `pnpm hooks` to (re)install it by hand.
 
 Push the tag you actually mean:
 
@@ -109,13 +119,14 @@ Publishing is per package:
 cd packages/dsh-media && npm publish
 cd packages/dsh-computer-use && npm publish
 cd packages/dsh-agent-server && npm publish
+cd packages/dsh-retry-gate && npm publish
 ```
 
 For defence in depth, a GitHub **tag ruleset** makes the foreign shape
 impossible to create server-side at all: Settings → Rules → Rulesets → New tag
 ruleset, target *Tags*, include pattern `v*`, add the **Restrict creations**
 rule, and leave the bypass list empty. (`v*` cannot match `media-v*`,
-`computer-use-v*` or `agent-server-v*`.)
+`computer-use-v*`, `agent-server-v*` or `retry-gate-v*`.)
 
 ## Upstream sync (dsh-computer-use)
 

@@ -1,0 +1,214 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "dsh-retry-gate — 按模型分桶的 TPM/RPM 准入闸门",
+    "subtitle": "在请求发出之前全局排队，而不是让每个会话各自撞 429 再各自盲目重试",
+    "output": "packages/dsh-retry-gate/docs/preview/gate-architecture.html",
+    "visual_preset": "blueprint",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "main-path",
+        "label": "主路径：会话到模型",
+        "focus": ["sessions", "loop", "gate", "adapter", "provider"],
+        "note": "所有会话的每一次模型尝试都穿过同一个闸门。"
+      },
+      {
+        "id": "ledger",
+        "label": "闸门的账本",
+        "focus": ["gate", "ledger"],
+        "note": "按模型分桶，同时看住 TPM 与 RPM，并用 429 反馈驱动全局冷却。"
+      },
+      {
+        "id": "recovery",
+        "label": "失败后的分工",
+        "focus": ["loop", "recovery", "gate", "retry"],
+        "note": "限流由闸门接管；其余失败原样交给 dsh-llm-retry。"
+      }
+    ],
+    "legend": {
+      "mode": "all"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "origin": [40, 130],
+    "cols": 5,
+    "cellW": 180,
+    "cellH": 130,
+    "gapX": 60,
+    "gapY": 58
+  },
+  "components": [
+    {
+      "id": "recovery",
+      "type": "backend",
+      "label": "agent/request-error",
+      "sublabel": "prepend 接管 RATE_LIMIT",
+      "row": 0,
+      "col": 2
+    },
+    {
+      "id": "retry",
+      "type": "backend",
+      "label": "dsh-llm-retry",
+      "sublabel": "仅非限流失败",
+      "row": 0,
+      "col": 3
+    },
+    {
+      "id": "sessions",
+      "type": "external",
+      "label": "并发会话 A…N",
+      "sublabel": "每会话一个 agent loop",
+      "row": 1,
+      "col": 0
+    },
+    {
+      "id": "loop",
+      "type": "backend",
+      "label": "Agent Loop",
+      "sublabel": "turn / step",
+      "row": 1,
+      "col": 1
+    },
+    {
+      "id": "gate",
+      "type": "security",
+      "label": "dsh-retry-gate",
+      "sublabel": "llm/stream · prepend",
+      "tag": "本插件",
+      "row": 1,
+      "col": 2
+    },
+    {
+      "id": "adapter",
+      "type": "backend",
+      "label": "Provider Adapter",
+      "sublabel": "llm-pi-ai / llm-deepseek",
+      "row": 1,
+      "col": 3
+    },
+    {
+      "id": "provider",
+      "type": "cloud",
+      "label": "token-hub",
+      "sublabel": "额度不可见",
+      "tag": "腾讯 MaaS",
+      "row": 1,
+      "col": 4
+    },
+    {
+      "id": "ledger",
+      "type": "database",
+      "label": "按模型分桶账本",
+      "sublabel": "TPM + RPM + 冷却",
+      "tag": "进程唯一",
+      "row": 2,
+      "col": 2
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "HOST 平面 · 进程唯一 · 所有会话共享",
+      "wraps": ["loop", "gate", "ledger", "recovery", "retry"]
+    },
+    {
+      "kind": "security-group",
+      "label": "准入账本：一个模型一个桶",
+      "wraps": ["gate", "ledger"]
+    }
+  ],
+  "connections": [
+    {
+      "from": "sessions",
+      "to": "loop",
+      "label": "用户请求",
+      "variant": "emphasis",
+      "labelDy": -26
+    },
+    {
+      "from": "loop",
+      "to": "gate",
+      "label": "llm.stream()",
+      "variant": "emphasis",
+      "labelDy": -26
+    },
+    {
+      "from": "gate",
+      "to": "adapter",
+      "label": "准入通过",
+      "variant": "emphasis",
+      "labelDy": -26
+    },
+    {
+      "from": "adapter",
+      "to": "provider",
+      "label": "HTTPS",
+      "variant": "emphasis",
+      "labelDy": -26
+    },
+    {
+      "from": "gate",
+      "to": "ledger",
+      "label": "预留 / 结算",
+      "route": "orthogonal-v"
+    },
+    {
+      "from": "recovery",
+      "to": "retry",
+      "label": "其余失败",
+      "variant": "dashed",
+      "labelDy": -26
+    },
+    {
+      "from": "recovery",
+      "to": "gate",
+      "label": "重跑同一步",
+      "variant": "dashed",
+      "labelAt": [665, 250]
+    },
+    {
+      "from": "loop",
+      "to": "recovery",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "闸门做四件事",
+      "items": [
+        "估计：tokenMeter 估输入 + 输出预留",
+        "准入：装不下就等，而不是发出去撞墙",
+        "结算：真实 usage 替换预留并退还差额",
+        "学习：429 反馈驱动全局冷却"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "实测依据",
+      "items": [
+        "额度按模型独立：打爆 A 时 B/C 同时可用",
+        "每模型两个门槛：TPM 1,000,000/min 与 RPM 60/min",
+        "缓存命中计入 TPM，前缀缓存换不来额度",
+        "响应头不暴露剩余额度，只能自记账"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "刻意不做",
+      "items": [
+        "不改 llm-pi-ai 的 Retry-After 读取",
+        "不改 retryPolicy（限流已由闸门接管）",
+        "不发布 Service，不写会话日志",
+        "任何自身异常一律放行（fail-open）"
+      ]
+    }
+  ]
+}

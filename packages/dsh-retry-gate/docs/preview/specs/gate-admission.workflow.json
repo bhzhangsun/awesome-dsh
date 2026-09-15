@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "闸门对每一次模型调用做的判定",
+    "subtitle": "估算预留 → 查三本账取最大等待 → 等待或直接过 → 放行并用真实用量结算",
+    "output": "packages/dsh-retry-gate/docs/preview/gate-admission.html",
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "estimate",
+        "label": "先估算再查账",
+        "focus": ["call", "estimate", "ledger"],
+        "note": "输入靠 tokenMeter 估，输出按预留算 —— TPM 卡的是 token 总量。"
+      },
+      {
+        "id": "how-long",
+        "label": "三本账取最大",
+        "focus": ["ledger", "waitms", "run"],
+        "note": "全局冷却、TPM 排空时间、RPM 排空时间，三者取最大值。"
+      },
+      {
+        "id": "failopen",
+        "label": "兜底永不挂死",
+        "focus": ["waitms", "failopen", "run"],
+        "note": "等待超过预算就放行一次，宁可撞一次 429 也不让会话卡住。"
+      }
+    ],
+    "legend": {
+      "mode": "all"
+    }
+  },
+  "lanes": [
+    { "id": "intake", "label": "触发与估算" },
+    { "id": "budget", "label": "查三本账" },
+    { "id": "decide", "label": "准入决策" },
+    { "id": "execute", "label": "发出与结算" },
+    { "id": "guard", "label": "兜底", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "estimate", "label": "估算", "fromCol": 0, "toCol": 1 },
+    { "id": "check", "label": "查账", "fromCol": 3, "toCol": 3, "variant": "emphasis" },
+    { "id": "release", "label": "决策与放行", "fromCol": 5, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["call", "estimate", "ledger", "waitms", "run"],
+  "nodes": [
+    {
+      "id": "call",
+      "lane": "intake",
+      "col": 0,
+      "type": "backend",
+      "label": "模型调用",
+      "sublabel": "llm.stream()",
+      "tag": "每次 attempt"
+    },
+    {
+      "id": "estimate",
+      "lane": "intake",
+      "col": 1,
+      "type": "backend",
+      "label": "估算预留",
+      "sublabel": "输入 + 输出"
+    },
+    {
+      "id": "ledger",
+      "lane": "budget",
+      "col": 3,
+      "type": "database",
+      "label": "查三本账",
+      "sublabel": "冷却 · TPM · RPM",
+      "tag": "按模型分桶"
+    },
+    {
+      "id": "waitms",
+      "lane": "decide",
+      "col": 5,
+      "type": "security",
+      "label": "还差多久",
+      "sublabel": "取最大 · 等待",
+      "tag": "本插件"
+    },
+    {
+      "id": "run",
+      "lane": "execute",
+      "col": 5,
+      "type": "backend",
+      "label": "放行 · 结算",
+      "sublabel": "next() → usage"
+    },
+    {
+      "id": "failopen",
+      "lane": "guard",
+      "col": 4,
+      "type": "cloud",
+      "label": "超时兜底",
+      "sublabel": "放行，不挂死"
+    }
+  ],
+  "edges": [
+    { "id": "e1", "from": "call", "to": "estimate", "variant": "emphasis" },
+    { "id": "e2", "from": "estimate", "to": "ledger", "route": "drop" },
+    { "id": "e3", "from": "ledger", "to": "waitms", "route": "drop", "variant": "emphasis" },
+    { "id": "e4", "from": "waitms", "to": "run", "variant": "emphasis" },
+    { "id": "e5", "from": "waitms", "to": "failopen", "route": "return-left", "role": "error" },
+    { "id": "e6", "from": "failopen", "to": "run", "route": "drop", "role": "error" }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "三本账各是什么",
+      "items": [
+        "全局冷却：429 反馈写入，所有会话共享",
+        "TPM 窗口：1,000,000 / min × 0.85 安全系数",
+        "RPM 窗口：60 / min，与 TPM 并列的第二个门槛"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "为什么不能只数 inputTokens",
+      "items": [
+        "实测：缓存命中同样计入 TPM",
+        "前缀缓存省的是钱和延迟，不是额度",
+        "所以账本记 totalTokens，不做缓存折扣"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "为什么敢在这里等",
+      "items": [
+        "等待发生在 attempt 内部，不消耗重试次数",
+        "响应头不暴露剩余额度，只能自记账 + 靠 429 纠正",
+        "任何自身异常一律 fail-open，绝不变成全局单点"
+      ]
+    }
+  ]
+}

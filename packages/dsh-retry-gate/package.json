@@ -1,0 +1,74 @@
+{
+  "name": "@bhzhangsun/dsh-retry-gate",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Provider-agnostic admission gate for per-model TPM/RPM limits: paces concurrent sessions instead of letting every one of them collide with a 429. Learns each model's real ceiling from the first 429 it observes, instead of trusting configured assumptions.",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./ledger": "./lib/ledger.js",
+    "./estimate": "./lib/estimate.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/**",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "docs/findings.md",
+    "scripts/gate-report.py"
+  ],
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "cordis.patch.yml"
+    },
+    "compatibility": {
+      "node": ">=22.18.0",
+      "dsh": ">=0.1.0"
+    },
+    "permissions": {
+      "summary": "纯本地准入闸门：在 `llm/stream` 上为每个模型串行化 TPM/RPM 用量，只在内存里记账。不写文件、不起子进程、不联网、不持有凭证。",
+      "commands": [],
+      "writePaths": [],
+      "externalServices": "无。它只观测本进程内已经发生的 LLM 调用，不代发请求、不读取供应商响应头；429 也只看调用结果本身。",
+      "failureBoundaries": "所有内部异常都被吞掉并放行调用——闸门只可能不生效，不可能拦住一个本该发出的请求；等待有 maxWaitMs 上限，超时即 fail-open；单次预留超过整个预算时跳过窗口等待（冷却仍然遵守）。",
+      "lifecycleEvidence": "docs/findings.md"
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "typecheck": "node --check lib/index.js && node --check lib/ledger.js && node --check lib/estimate.js",
+    "check": "npm run typecheck && npm test"
+  },
+  "keywords": [
+    "deepseek",
+    "dsh",
+    "cordis",
+    "plugin",
+    "rate-limit",
+    "tpm",
+    "rpm",
+    "retry",
+    "admission-control",
+    "429",
+    "backpressure"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bhzhangsun/awesome-dsh.git",
+    "directory": "packages/dsh-retry-gate"
+  },
+  "homepage": "https://github.com/bhzhangsun/awesome-dsh/tree/main/packages/dsh-retry-gate#readme",
+  "bugs": {
+    "url": "https://github.com/bhzhangsun/awesome-dsh/issues"
+  }
+}

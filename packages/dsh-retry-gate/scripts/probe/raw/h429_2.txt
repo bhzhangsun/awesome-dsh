@@ -1,0 +1,12 @@
+HTTP/1.1 429 Too Many Requests
+Date: Mon, 14 Sep 2026 06:02:17 GMT
+Content-Type: application/json
+Content-Length: 397
+Connection: keep-alive
+Access-Control-Allow-Headers: Content-Type, Authorization, X-Request-ID
+Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS
+Access-Control-Allow-Origin: *
+Retry-After: 60
+X-Request-Id: 3ada9023-2ec1-442d-8e68-19c778d91e8e
+X-Trace-Id: 3ada90232ec1442d8e6819c778d91e8e
+

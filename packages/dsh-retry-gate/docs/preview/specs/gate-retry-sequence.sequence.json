@@ -1,0 +1,217 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "一次 429 的完整回路 —— 闸门如何把「重试 5 次全败」变成「一次等到窗口恢复」",
+    "subtitle": "闪存桶被打爆的同时，隔壁模型的会话照常通行",
+    "output": "packages/dsh-retry-gate/docs/preview/gate-retry-sequence.html",
+    "viewBox": [880, 800],
+    "visual_preset": "signal-flow",
+    "animation": "trace",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "hit-limit",
+        "label": "撞上限流",
+        "focus": ["sessA", "gate", "adapter", "hub"],
+        "note": "请求真的发出去了，429 带着 Retry-After: 60 回来。"
+      },
+      {
+        "id": "takeover",
+        "label": "闸门接管",
+        "focus": ["sessA", "gate", "adapter"],
+        "note": "限流不走 llm-retry：闸门记下全局冷却并立刻要求重跑同一步。"
+      },
+      {
+        "id": "independent",
+        "label": "另一个模型",
+        "focus": ["sessB", "gate"],
+        "note": "桶按模型划分，B 的请求完全不排队。"
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "sessA",
+      "type": "backend",
+      "label": "会话 A",
+      "sublabel": "model = flash"
+    },
+    {
+      "id": "sessB",
+      "type": "backend",
+      "label": "会话 B",
+      "sublabel": "model = kimi-k3"
+    },
+    {
+      "id": "gate",
+      "type": "security",
+      "label": "retry-gate",
+      "sublabel": "准入闸门 · 唯一睡觉处"
+    },
+    {
+      "id": "adapter",
+      "type": "backend",
+      "label": "llm-pi-ai",
+      "sublabel": "适配器"
+    },
+    {
+      "id": "hub",
+      "type": "cloud",
+      "label": "token-hub",
+      "sublabel": "腾讯 MaaS"
+    }
+  ],
+  "messages": [
+    {
+      "id": "m1",
+      "from": "sessA",
+      "to": "gate",
+      "y": 160,
+      "label": "stream(model=flash)",
+      "variant": "emphasis",
+      "note": "每一次 provider 尝试都穿过闸门，重试的第 2、3 次也一样。"
+    },
+    {
+      "id": "m2",
+      "from": "gate",
+      "to": "adapter",
+      "y": 202,
+      "label": "准入通过 → next()",
+      "variant": "default",
+      "note": "账本里塞得下：已用 + 预留仍在 85% 安全线内。"
+    },
+    {
+      "id": "m3",
+      "from": "adapter",
+      "to": "hub",
+      "y": 244,
+      "label": "POST /chat/completions",
+      "variant": "default"
+    },
+    {
+      "id": "m4",
+      "from": "hub",
+      "to": "adapter",
+      "y": 286,
+      "label": "429 · Retry-After: 60",
+      "variant": "return",
+      "note": "实测响应头；200 响应则完全不暴露限流信息。"
+    },
+    {
+      "id": "m5",
+      "from": "adapter",
+      "to": "gate",
+      "y": 328,
+      "label": "finish(error: RATE_LIMIT)",
+      "variant": "return",
+      "note": "pi-ai 不解析 Retry-After，这个值由闸门自己从原始响应头兜住。"
+    },
+    {
+      "id": "m6",
+      "from": "gate",
+      "to": "sessA",
+      "y": 370,
+      "label": "流结束（失败）",
+      "variant": "return",
+      "note": "同一时刻 flash 桶写入 60s 全局冷却 —— 后续所有会话都受益。"
+    },
+    {
+      "id": "m7",
+      "from": "sessA",
+      "to": "gate",
+      "y": 412,
+      "label": "request-error · 重跑同一步",
+      "variant": "emphasis",
+      "note": "闸门 prepend 接管 RATE_LIMIT，llm-retry 根本看不到这次失败，也就不会再用 5×10s 的盲退避去撞同一个窗口。"
+    },
+    {
+      "id": "m8",
+      "from": "gate",
+      "to": "adapter",
+      "y": 454,
+      "label": "冷却结束后 next()",
+      "variant": "default",
+      "note": "等待发生在 attempt 内部，因此不消耗重试次数 —— 这正是「重试 5 次全败」变成「一次等到恢复」的机制。"
+    },
+    {
+      "id": "m9",
+      "from": "adapter",
+      "to": "hub",
+      "y": 496,
+      "label": "POST /chat/completions",
+      "variant": "default"
+    },
+    {
+      "id": "m10",
+      "from": "hub",
+      "to": "adapter",
+      "y": 538,
+      "label": "200 OK",
+      "variant": "return"
+    },
+    {
+      "id": "m11",
+      "from": "adapter",
+      "to": "gate",
+      "y": 580,
+      "label": "usage → settle()",
+      "variant": "return",
+      "note": "用真实 totalTokens 替换估算的预留，差额退还，账本不会虚高。"
+    },
+    {
+      "id": "m12",
+      "from": "gate",
+      "to": "sessA",
+      "y": 622,
+      "label": "成功",
+      "variant": "return"
+    },
+    {
+      "id": "m13",
+      "from": "sessB",
+      "to": "gate",
+      "y": 666,
+      "label": "stream(model=kimi-k3)",
+      "variant": "emphasis",
+      "note": "全程无需等待：它在另一个桶里。"
+    },
+    {
+      "id": "m14",
+      "from": "gate",
+      "to": "sessB",
+      "y": 708,
+      "label": "立即放行",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "现状为什么会「重试也不管用」",
+      "items": [
+        "默认退避 500ms→10s ×5 次 ≈ 15.5s",
+        "限流窗口是 60s —— 数学上永远等不过去",
+        "pi-ai 不读 Retry-After，官方路由读了却因 >10s 直接放弃"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "闸门的两条纪律",
+      "items": [
+        "只有一个地方会睡觉：llm/stream",
+        "request-error 只做决定，立刻返回 {kind:'retry'}",
+        "等待在 attempt 内部 → 不占重试预算"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "多模型 = 多份额度",
+      "items": [
+        "桶的键是 model，不是账号",
+        "实测：打爆 flash 时 kimi / vision 同时 200",
+        "把并发会话与子代理分流到不同模型就是扩容"
+      ]
+    }
+  ]
+}

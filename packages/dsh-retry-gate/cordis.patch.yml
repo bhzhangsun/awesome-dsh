@@ -1,0 +1,43 @@
+# @bhzhangsun/dsh-retry-gate bundle patch
+#
+# 这是 **HOST 平面**的一行，不是 agent preset 的一行。
+#
+# 原因：额度按模型全局计算（实测 TPM 1,000,000/min、RPM 60/min，各模型独立成桶），
+# 所有会话共用同一份账本才有意义。放进 preset 会变成"每个会话各算各的账"，
+# 等于没做；而发布 Service 又必须走 host 平面或带 isolate realm。
+#
+# 安装后由 `dsh plugin --profile <name> add` 或 profiles/<name>/package.json 的
+# dsh.profile.bundles 引入；本文件声明 insert 行，profile 启动时合并。
+- insert:
+    - id: '@bhzhangsun/dsh-retry-gate'
+      name: '@bhzhangsun/dsh-retry-gate'
+      config:
+        # **起点**，不是真额度：之后由自学习修正（撞 429 下调 / 无 429 缓慢上探）。
+        # 实测报错文案里的 "TPM limit 1000000" 并不可信——flash 的触发点贴合 102%，
+        # 而 flash-vision-exp 的触发点在 103%–324% 之间散开，差 3 倍。
+        defaultTpm: 1000000
+        defaultRpm: 60
+        # 只用到额度的 85%，给预估误差留余量
+        safetyFactor: 0.85
+        windowMs: 60000
+        # 429 没给 Retry-After 时的兜底冷却：按一个完整窗口等
+        fallbackCooldownMs: 60000
+        # 单次请求最多等多久，超过就放行（宁可撞一次 429，也不挂死会话）
+        # 注意：这里显式写的值会压过 lib/index.js 里的 DEFAULTS——改默认值而不改这里
+        # 是不会生效的（踩过一次）。窗口只有 60s，等更久没有收益，而等待在 UI 上是静默的。
+        maxWaitMs: 120000
+        # 每个 step 允许的限流重试次数（这条路径绕开了 llm-retry 的预算，自己管）
+        maxRetriesPerStep: 6
+        # 输出预留：TPM 按 token 总量卡，输出也算额度
+        outputReserveTokens: 8192
+        jitterMs: 250
+        # 明示的按模型起点；未列出的模型走 defaultTpm/defaultRpm。
+        # 这里写的是**起点**，自学习会在运行中把它改掉——想强制某个模型的额度，
+        # 只能靠 safetyFactor 或改代码，配置只影响起点。
+        models:
+          deepseek/deepseek-v4-flash:
+            tpm: 1000000
+            rpm: 60
+          deepseek/deepseek-v4-flash-vision-exp:
+            tpm: 1000000
+            rpm: 60
