@@ -17,13 +17,16 @@
  *   app_launch              启动应用
  *
  *   浏览器驱动（CDP，DOM 级；Chrome / Edge 走同一条路径，Safari 退回 computer-use）：
- *   browser_prepare         绑定浏览器 DevTools 端点
- *   get_browser_state       读页面 / 取元素 ref
- *   browser_navigate        按 URL 打开
- *   browser_click            DOM 级点击
- *   browser_type             DOM 级输入
- *   browser_pointer         hover / 右键 / 双击 / 滚动 / 拖拽
- *   browser_dialog          处理 JS 弹窗
+ *   —— **兜底能力**。专用浏览器插件 / 浏览器 MCP 才是首选；本组工具只在系统里没有任何
+ *      浏览器操作方案、或用户明确同意时才用（完整优先级见 apply() 内的系统提示注入）。
+ *      工具名与 cua-driver 引擎的 browser_* 调用一一对应，便于对照引擎文档排查。
+ *   browser_prepare     绑定浏览器 DevTools 端点（新开窗口需用户明确同意）
+ *   browser_state       读页面 / 取元素 ref
+ *   browser_navigate    按 URL 打开
+ *   browser_click       DOM 级点击
+ *   browser_type        DOM 级输入
+ *   browser_pointer     hover / 右键 / 双击 / 滚动 / 拖拽
+ *   browser_dialog      处理 JS 弹窗
  *
  * 视觉能力（原生接入）：
  *   - mode="native"：截图经 attachments 持久化后以图片块返回，主对话模型
@@ -566,15 +569,18 @@ export async function apply(ctx, config) {
   // ───── 浏览器驱动（CDP / Chrome DevTools Protocol）─────
   // 仅透传 cua-driver 的 browser_* 引擎调用，不做封装；sid 由 cuaCall 自动注入为 session。
   // 兼容性：Chrome / Edge（同为 Chromium）完整支持；Safari 走不了 CDP，相关任务由提示词退回 computer-use。
+  // 定位：**兜底**。系统里已装浏览器插件 / 浏览器 MCP 时，用它们而不要用本组工具。
   ctx.tools.register(defineTool({
     name: 'browser_prepare',
     description:
-      '绑定一个浏览器的 DevTools 端点，为后续 browser_* 工具建立会话作用域的 target_id / tab_id。' +
-      '两种用法：① 自主 / 公开站点任务用 `{ allow_launch: true, profile: { mode: "isolated_new" } }` 在后台启动一个隔离浏览器（不碰用户数据）；' +
-      '② 接管用户已打开的 Chrome / Edge：传其 `pid`（来自 app_list）。返回 target_id / tab_id，供后续 navigate / click / type 逐次透传。',
+      '【兜底】绑定一个浏览器的 DevTools 端点，为后续 browser_* 工具建立会话作用域的 target_id / tab_id。' +
+      '调用前先确认系统里没有更合适的浏览器操作方案（专用浏览器插件工具、或 mcp__* 浏览器 MCP 工具）——有就用它们。' +
+      '用法：① **首选**接管用户已打开且有窗口的 Chrome / Edge：传其 `pid`（来自 app_list）；' +
+      '② **最后手段**仅当没有任何可接管的浏览器、且**用户明确同意新开窗口**时，才传 `{ allow_launch: true, profile: { mode: "isolated_new" } }`。' +
+      '返回 target_id / tab_id，供后续 navigate / click / type 逐次透传。',
     parameters: {
-      allow_launch: { type: 'boolean', description: '是否允许启动一个 driver 拥有的隔离 Chromium（默认 false）。与 pid 二选一。' },
-      pid: { type: 'integer', description: '目标浏览器进程 pid（app_list 输出）。与 allow_launch 二选一；接管用户浏览器时传此值。' },
+      allow_launch: { type: 'boolean', description: '【最后手段】是否新开一个 driver 拥有的独立 Chromium 窗口（默认 false）。**仅在用户明确同意时**才传 true；不得为了让任务跑起来就默认新开窗口。与 pid 二选一。' },
+      pid: { type: 'integer', description: '【首选】目标浏览器进程 pid（app_list 输出）。接管用户已开的浏览器时传此值。与 allow_launch 二选一。' },
       profile: {
         type: 'object',
         additionalProperties: false,
@@ -590,7 +596,7 @@ export async function apply(ctx, config) {
   }))
 
   ctx.tools.register(defineTool({
-    name: 'get_browser_state',
+    name: 'browser_state',
     description:
       '只读检查浏览器：读取页面的 DOM / 语义大纲 / 元素 ref（用于定位与校验网页内容）。' +
       '传 target_id + tab_id 读取该标签页快照（返回可点击元素的 ref 与文本）；' +
@@ -606,7 +612,7 @@ export async function apply(ctx, config) {
       snapshot_format: { type: 'string', enum: ['dom_refs_v1', 'semantic_v2'], description: '快照格式，默认 dom_refs_v1。' },
     },
     output: OUT(),
-    execute: wrap('get_browser_state', (args, _c, _e, sid) => browserGetState(args, _c, _e, sid)),
+    execute: wrap('browser_state', (args, _c, _e, sid) => browserGetState(args, _c, _e, sid)),
   }))
 
   ctx.tools.register(defineTool({
@@ -623,11 +629,11 @@ export async function apply(ctx, config) {
 
   ctx.tools.register(defineTool({
     name: 'browser_click',
-    description: '点击页面元素：传 get_browser_state 返回的 ref，或视口 x/y 坐标（CSS px）。默认走可信硬件级输入。',
+    description: '点击页面元素：传 browser_state 返回的 ref，或视口 x/y 坐标（CSS px）。默认走可信硬件级输入。',
     parameters: {
       target_id: { type: 'string', required: true, description: 'target id。' },
       tab_id: { type: 'string', required: true, description: '标签页 id。' },
-      ref: { type: 'string', description: '元素 ref（p<snapshot>:<index>），来自 get_browser_state。与 x/y 二选一。' },
+      ref: { type: 'string', description: '元素 ref（p<snapshot>:<index>），来自 browser_state。与 x/y 二选一。' },
       x: { type: 'number', description: '视口 x（CSS px），替代 ref。' },
       y: { type: 'number', description: '视口 y（CSS px），替代 ref。' },
       input_route: { type: 'string', enum: ['trusted', 'dom_event'], description: '输入路由：trusted（默认）/ dom_event（仅显式请求时用）。' },
@@ -638,11 +644,11 @@ export async function apply(ctx, config) {
 
   ctx.tools.register(defineTool({
     name: 'browser_type',
-    description: '向页面元素输入文本：传 get_browser_state 返回的 ref。默认在光标处插入（追加到已有文本）；replace:true 先全选再输入（清空则清框）。',
+    description: '向页面元素输入文本：传 browser_state 返回的 ref。默认在光标处插入（追加到已有文本）；replace:true 先全选再输入（清空则清框）。',
     parameters: {
       target_id: { type: 'string', required: true, description: 'target id。' },
       tab_id: { type: 'string', required: true, description: '标签页 id。' },
-      ref: { type: 'string', required: true, description: '可编辑元素 ref，来自 get_browser_state。' },
+      ref: { type: 'string', required: true, description: '可编辑元素 ref，来自 browser_state。' },
       text: { type: 'string', required: true, description: '要输入的文本。' },
       replace: { type: 'boolean', description: 'true=先全选再替换（空文本则清空）；默认 false=光标处插入。' },
       mode: { type: 'string', enum: ['insert_text', 'keystrokes'], description: 'insert_text（默认）/ keystrokes（逐字符按键）。' },
@@ -700,7 +706,7 @@ export async function apply(ctx, config) {
         '- 看屏：`screen_observe`（返回可点击元素的编号与坐标，支持 native / vision / ax 三模式；游戏 / Canvas / Electron 等无 AX 树的界面用 native 截图直读）、`screen_zoom`（区域截图放大直读）。',
         '- 操作：`computer_click` / `computer_double_click` / `computer_right_click`（真实像素级点击）、`computer_type`（文本输入）、`computer_key`（按键 / 快捷键）、`computer_scroll`（滚动）、`computer_drag`（拖拽）、`computer_wait`（等待）、`computer_sequence`（多步编排）。',
         '- 应用：`app_list`（列出正在运行的应用）、`app_launch`（启动应用）。',
-        '- 浏览器驱动（CDP，DOM 级）：`browser_prepare`（绑定浏览器）、`get_browser_state`（读页面 / 取元素 ref）、`browser_navigate`（按 URL 打开）、`browser_click` / `browser_type`（DOM 级点击 / 输入）、`browser_pointer`（hover / 右键 / 双击 / 滚动 / 拖拽）、`browser_dialog`（处理 JS 弹窗）。',
+        '- 浏览器驱动（CDP，DOM 级，**兜底能力**）：`browser_prepare`（绑定浏览器）、`browser_state`（读页面 / 取元素 ref）、`browser_navigate`（按 URL 打开）、`browser_click` / `browser_type`（DOM 级点击 / 输入）、`browser_pointer`（hover / 右键 / 双击 / 滚动 / 拖拽）、`browser_dialog`（处理 JS 弹窗）。',
         '',
         '**使用流程**：当用户要你操作本机 / 桌面 / 某个 App、打开窗口、点击某按钮、填写表单，或读取屏幕上可见的内容时——',
         '1. 先调用 `screen_observe` 获取当前屏幕的元素编号与坐标；',
@@ -708,19 +714,40 @@ export async function apply(ctx, config) {
         '3. 多步任务每步前重新 `screen_observe`（屏幕状态会变，且快照有有效期）。',
         '所有坐标与元素编号都来自 `screen_observe` 的输出，所见即所点。',
         '',
-        '### 浏览器任务：优先用浏览器驱动（而非像素操作）',
-        '当任务涉及「网站 / 网页应用 / 某个 URL / 读取或校验网页上的内容」时，**优先使用浏览器驱动**（DOM 级，比 screen_observe + computer_click 点像素更可靠）。仅在以下情况退回通用 computer-use：',
-        '- 需要**登录态**或**人机协作**（v1 暂不做无头登录态桥接，直接用 computer-use 操作用户可见的浏览器窗口）；',
-        '- **Safari**（本引擎走 CDP，绑定不了 Safari，退回 computer-use 的 AX 路径）；',
-        '- 浏览器驱动不可用（浏览器未装 / 绑定失败 / 引擎拒绝）时，**不要卡在浏览器工具上，立即退回 computer-use**。',
+        '### 浏览器任务：先找系统里已有的浏览器方案，compute-use 只做兜底',
+        '任务涉及「网站 / 网页应用 / 某个 URL / 读取或校验网页上的内容」时，**严格按下面顺序逐级降级，不要跳级**。',
         '',
-        '**标准流程（默认 Chrome；用户指名 Edge 用 Edge，二者同为 Chromium 走同一驱动）**：',
-        '1. `browser_prepare`（自主 / 公开站点任务用 `{ allow_launch: true, profile: { mode: "isolated_new" } }` 在后台启动隔离浏览器；不碰用户数据）绑定 DevTools 端点，取回 `target_id` / `tab_id`；',
+        '**第 0 步（每次都要先做）：探测系统里已有的浏览器操作能力。** 检查当前工具列表里是否已经存在——',
+        '① **浏览器 / 网页类 MCP 工具**（`mcp__<server>__*`）。常见的是 Chrome DevTools MCP，它成对出现，**按任务性质选**：',
+        '   - `mcp__chrome-headless__*` → **无头**。**调试、自动化测试、抓公开页面、验证本地项目，一律用这个**，不要动有界面的那个。',
+        '   - `mcp__chrome__*` → **有界面**的独立浏览器窗口。需要看渲染效果、或要让用户旁观 agent 操作时用。',
+        '   - ⚠️ 它们的 `upload_file` 默认**只能读系统临时目录**：要上传工作区里的文件，先用 shell 把文件 `cp` 到 `/tmp` 再传，不要因为报错就放弃。',
+        '② **专用浏览器插件工具**（成体系的一族，例如 `browser_snapshot` / `browser_click` / `browser_follow_tab` 这类）。',
+        '**只要有，就必须用它们**：它们专为浏览器而生（结构化页面快照、专用审批链路），比本插件的 CDP 透传更可靠。**探测到就不要再调用 `browser_*`。**',
+        '',
+        '**第 1 步：任务需要「用户在目标站点的登录态」**（他的后台、邮箱、已购服务等）→ **停下来说明限制，不要硬试**：',
+        '上面那些自启浏览器用的是**独立 profile，没有用户的日常登录态**。这是 Chrome 136+ 的安全设计（调试端口在默认 profile 上会被忽略），不是配置问题。',
+        '给用户两个选项：① 在 `mcp__chrome__*`（可见实例）里**登录一次**——该 profile 会持久化，之后一直有效；② 由用户自己操作。',
+        '**绝对不要**替用户输入账号密码。',
+        '',
+        '**第 2 步：完全没有可用的浏览器方案** → **先问用户，不要自己开窗口**，并主动建议配置浏览器 MCP（`chrome-devtools-mcp` 零前置即可用，无需任何浏览器开关或扩展）。',
+        '只有在用户**明确同意**后，才可以用 `browser_prepare({ allow_launch: true, profile: { mode: "isolated_new" } })` 兜底起一个隔离浏览器。',
+        '',
+        '**硬性约束**：',
+        '- **禁止**为了让任务跑起来就默认 `allow_launch: true` 新开窗口——那必须是用户明确同意的最后手段。',
+        '- **调试 / 测试类任务一律走无头**（`mcp__chrome-headless__*`）；有界面实例只在需要"看得见"时用。',
+        '- 自启浏览器是**独立 profile，没有用户日常登录态**；涉及登录直接说明限制，**不要尝试替用户输入密码**。',
+        '- **不要指望 `browser_prepare` 传 `pid` 接管用户日常开的 Chrome** —— 实测必被拒（`refusal: browser_requires_setup`），引擎只认领**已开着远程调试端口**的浏览器。被拒时不要顺势开新窗口，回到第 2 步问用户。',
+        '- **Safari / Firefox** 走不了本引擎的 CDP，退回通用 `computer_*`（AX 路径），或建议用户改用 Chrome / Edge。',
+        '- 本组 `browser_*` 工具是**兜底**：专用浏览器插件或浏览器 MCP 可用时，一律不要调用它们。',
+        '',
+        '**兜底流程**（只在第 2 步之后才会用到；默认 Chrome，用户指名 Edge 用 Edge，二者同为 Chromium 走同一驱动）：',
+        '1. `browser_prepare` 绑定 DevTools 端点，取回 `target_id` / `tab_id`；',
         '2. `browser_navigate({ target_id, tab_id, url })` 打开目标网址；',
-        '3. `get_browser_state({ target_id, tab_id })` 读取页面 DOM 与元素 ref（用于校验 / 定位）；',
-        '4. 用 `browser_click({ target_id, tab_id, ref })`（或 x/y 视口坐标）、`browser_type({ target_id, tab_id, ref, text })`（输入，可 `replace:true` 替换整框）操作；多步之间重新 `get_browser_state` 取最新 ref（导航 / 新快照会让旧 ref 失效）。',
+        '3. `browser_state({ target_id, tab_id })` 读取页面 DOM 与元素 ref（用于校验 / 定位）；',
+        '4. 用 `browser_click({ target_id, tab_id, ref })`（或 x/y 视口坐标）、`browser_type({ target_id, tab_id, ref, text })`（输入，可 `replace:true` 替换整框）操作；多步之间重新 `browser_state` 取最新 ref（导航 / 新快照会让旧 ref 失效）。',
         '5. 需要时 `browser_pointer`（hover / 右键 / 双击 / 滚动 / 拖拽）、`browser_dialog`（处理 JS 弹窗）。',
-        '所有 `target_id` / `tab_id` / `ref` 都来自 `browser_prepare` / `get_browser_state` 的返回，逐次透传，不要凭空编造。',
+        '所有 `target_id` / `tab_id` / `ref` 都来自 `browser_prepare` / `browser_state` 的返回，逐次透传，不要凭空编造。',
         '',
         '注意：这些操作是真实且可见的，会实际改变用户屏幕状态；涉及删除 / 支付 / 转账等危险操作时你会被要求先获得用户批准，密码框不会被自动填写。请只有在用户意图明确指向“操作这台电脑 / 这个网页”时才使用上述工具。',
       ].join('\n'),
@@ -731,7 +758,7 @@ export async function apply(ctx, config) {
   // 绝不 stop 共享 daemon（其他会话可能还在用）。
   ctx.on?.('dispose', () => { void endSessionOnUnload() })
 
-  ctx.logger?.info('dsh-computer-use: 20 个工具已注册（13 通用 Computer Use + 7 浏览器驱动；零配置：自动引导/起 daemon/权限/自更新）')
+  ctx.logger?.info('dsh-computer-use: 20 个工具已注册（13 通用 Computer Use + 7 浏览器驱动 browser_*；浏览器组为兜底，专用浏览器插件/MCP 优先。零配置：自动引导/起 daemon/权限/自更新）')
 }
 
 export default { name, inject, Config, apply }

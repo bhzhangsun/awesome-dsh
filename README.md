@@ -27,7 +27,7 @@ pnpm install
 | Package | What it does | Language / build |
 | --- | --- | --- |
 | [`@bhzhangsun/dsh-media`](./packages/dsh-media) | Renders audio/video in the assistant message body: a `media_render` tool plus a `dsh-media` fence replaced by a block-level player. | TypeScript (tsdown client bundle) |
-| [`@bhzhangsun/dsh-computer-use`](./packages/dsh-computer-use) | Computer Use: virtual-cursor desktop automation with native vision, 12 model-facing tools, backed by cua-driver. | Plain ESM JavaScript, no build step — a fork of [`988hj7tczd-oss/dsh-computer-use`](https://github.com/988hj7tczd-oss/dsh-computer-use), see its `NOTICE` |
+| [`@bhzhangsun/dsh-computer-use`](./packages/dsh-computer-use) | Computer Use: virtual-cursor desktop automation with native vision, 20 model-facing tools, backed by cua-driver. | Plain ESM JavaScript, no build step — a fork of [`988hj7tczd-oss/dsh-computer-use`](https://github.com/988hj7tczd-oss/dsh-computer-use), see its `NOTICE` |
 | [`@bhzhangsun/dsh-agent-server`](./packages/dsh-agent-server) | Turns dsh into a headless AI agent server: installs the `server` profile (HTTP/WS API, browser GUI off) with the `server` agent preset (pure-reasoning orchestration), then `dsh --profile server`. Ships a reference reverse proxy for business-owned, per-route auth. | Plain ESM JavaScript, no build step |
 | [`@bhzhangsun/dsh-retry-gate`](./packages/dsh-retry-gate) | Admission gate for per-model TPM/RPM limits: concurrent sessions queue at `llm/stream` instead of all colliding with the same 429. Learns each model's real ceiling from the first 429 it sees, so the configured limit is only a starting point. | Plain ESM JavaScript, no build step, zero dependencies |
 

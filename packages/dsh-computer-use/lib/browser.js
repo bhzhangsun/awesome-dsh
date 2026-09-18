@@ -6,10 +6,22 @@
  * 所有调用都带 sid（本 harness 会话的 cua session id），由 cuaCall 自动注入为
  * 浏览器工具的 `session` 参数，保证并发会话隔离。
  *
- * 兼容性（v1，详见 index.js 系统提示）：
+ * 定位（重要）：本组工具是**兜底**。任务涉及网页时应先探测系统里是否已有
+ *   - 专用浏览器插件的工具（成体系的一族），或
+ *   - 浏览器 / 网页类 MCP 工具（`mcp__<server>__*`）。
+ * 有则一律用它们；本组 `browser_*` 只在两者都没有、或用户明确同意时才用。
+ * 完整优先级写在 index.js 注入的系统提示里。
+ *
+ * 命名：工具名与 cua-driver 引擎的 `browser_*` 调用一一对应，便于对照引擎文档排查。
+ *
+ * 兼容性（v1）：
  *   - Chrome / Edge（同为 Chromium）→ 完整支持，走同一条 CDP 路径。
- *   - Safari → 本引擎是 CDP，绑定不了 Safari；相关任务由提示词引导退回 computer-use(AX)。
- *   - 登录态 / 人机协作 → v1 暂不做无头登录态桥接，退回 computer-use。
+ *   - Safari / Firefox → 本引擎是 CDP，绑定不了；相关任务由提示词引导退回 computer-use(AX)。
+ *   - 无头浏览器 → **不支持**：bind 模式要求 pid + window_id（原生窗口），无头无窗口。
+ *   - 「传 pid 接管用户已在用的浏览器」→ **实测大概率被拒**。引擎认领端点的依据是
+ *     "哪个 pid 拥有本机 loopback 上的调试监听 socket"，日常双击启动的 Chrome 没有该端口，
+ *     browser_prepare 会返回 refusal: browser_requires_setup。当前 daemon 为 standard
+ *     权限模式、无 existing-profile 授权，因此这条路径实际是关闭的；正解见系统提示第 0 步。
  *   - 任何浏览器驱动不可用 / 被拒绝 → 退回 computer-use（提示词已写明）。
  */
 import { cuaCall, normalizeMcp } from './cua.js'

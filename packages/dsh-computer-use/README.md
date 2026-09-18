@@ -33,14 +33,25 @@
 | `computer_wait` | 等待 |
 | `app_list` / `app_launch` | 列出 / 启动应用 |
 
-### 🌐 浏览器驱动（CDP，DOM 级；v0.3.6 新增）
+### 🌐 浏览器驱动（CDP，DOM 级；**兜底能力**）
 
-网页类任务**优先用浏览器驱动**（读 DOM、按元素 ref 操作，比像素点按更可靠）。**Chrome / Edge 同为 Chromium，走同一条 CDP 路径**；Safari 走不了 CDP，相关任务自动退回 computer-use 的 AX 路径。
+> **先找系统里已有的浏览器方案，本组工具只做兜底。**
+> 任务涉及网页时按此顺序：**① 浏览器 MCP / 专用浏览器插件 → ② 需要用户登录态就说明限制 → ③ 征得用户明确同意后才新开窗口**。
+> 首选是 [chrome-devtools-mcp](https://github.com/ChromeDevTools/chrome-devtools-mcp)：**零前置**（不需要 `chrome://inspect` 开关、不需要浏览器扩展），自带无头模式。
+
+工具名与 cua-driver 引擎的 `browser_*` 调用一一对应。
+
+**Chrome / Edge 同为 Chromium，走同一条 CDP 路径**；Safari / Firefox 走不了 CDP，相关任务退回 computer-use 的 AX 路径。
+
+> **与浏览器 MCP 的分工**：装了 chrome-devtools-mcp 后通常是两个实例成对出现 ——
+> `mcp__chrome-headless__*`（无头，用于调试 / 测试 / 抓公开页面）和 `mcp__chrome__*`（有界面，需要"看得见"时用）。
+> 两者都是**独立 profile，没有用户日常登录态**（Chrome 136+ 的安全设计：`--remote-debugging-port` 在默认 profile 上会被忽略）。
+> 提示词里已写明这个优先级与本组工具的兜底定位。
 
 | 工具 | 功能 |
 |------|------|
-| `browser_prepare` | 绑定浏览器 DevTools 端点：自主任务用 `isolated_new` 在后台启动隔离浏览器（不碰用户数据）；或接管用户已开的 Chrome / Edge（传 `pid`） |
-| `get_browser_state` | 读页面 DOM / 取元素 ref（定位与校验网页内容） |
+| `browser_prepare` | 绑定浏览器 DevTools 端点。**只能认领已开着远程调试端口的浏览器**（靠"哪个 pid 拥有本机 loopback 调试 socket"判断）；日常双击启动的 Chrome 会返回 `refusal: browser_requires_setup`。接管走不通时**不要**自动改用 `isolated_new` 开新窗口——须先征得用户同意（不碰用户数据，但也没有登录态） |
+| `browser_state` | 读页面 DOM / 取元素 ref（定位与校验网页内容） |
 | `browser_navigate` | 按 URL 打开网页 |
 | `browser_click` / `browser_type` | DOM 级点击 / 输入（按 `ref` 或视口坐标） |
 | `browser_pointer` | hover / 右键 / 双击 / 滚动 / 拖拽 |
@@ -194,7 +205,10 @@ dsh plugin --profile desktop remove @bhzhangsun/dsh-computer-use
 - **原生直读的图片 token 成本**：整窗截图（尤其 Retina）每次进上下文会消耗图片 token；需要高频轮询的场景建议 ax 模式 + `query` 过滤，或 `screen_zoom` 只看局部
 - **AX 安全检测仅对 element 编号模式生效**：坐标模式与无目标输入（`computer_type` / `computer_key` 落前台）由快照 TTL 与"操作可见"兜底（见上"安全设计"）
 - macOS 计算器等窗口显示屏不在 AX 树（用 `mode="native"` 直读即可）
-- **浏览器驱动兼容性（v0.3.6）**：Chrome / Edge 完整支持（同一条 CDP 路径）；**Safari 暂不支持 DOM 级驱动**（引擎是 CDP，绑定不了 Safari），相关任务退回 computer-use 的 AX 路径；v1 浏览器驱动仅面向**公开站点**，涉及登录态 / 人机协作的网页任务也退回 computer-use（无头登录态桥接留作后续）
+- **浏览器驱动兼容性（v0.3.6）**：Chrome / Edge 完整支持（同一条 CDP 路径）；**Safari / Firefox 不支持 DOM 级驱动**（引擎是 CDP，绑定不了），相关任务退回 computer-use 的 AX 路径
+- **浏览器优先级重写（v0.3.8）**：决策链改为「先探测浏览器 MCP / 专用插件 → 需要用户登录态就停下来说明限制 → 征得明确同意才新开窗口」。**本组工具定位为兜底**——检测到专用浏览器插件工具或浏览器 MCP 时不得调用；新开窗口必须获得用户明确同意
+- **无头浏览器不可用**：cua-driver 的 `browser_prepare` 在 bind 模式下要求 `pid + window_id`（原生窗口），无头 Chromium 没有窗口，因此**本插件无法驱动无头浏览器**；调试类任务请改用浏览器 MCP（如 chrome-devtools-mcp 的 `--headless`）
+- **「传 pid 接管用户浏览器」实际走不通（实测）**：当前 daemon 是 `standard` 权限模式且无 `--grant existing-profile` 授权，`browser_prepare({ pid })` 对**日常启动**的 Chrome 直接返回 `refusal: browser_requires_setup`（引擎建议的出路只有 `allow_launch=true` 开新窗口）。要真正接管用户正在用的浏览器，正解是浏览器插件或 `chrome-devtools-mcp --autoConnect`，而不是本组工具
 
 ## 🧪 开发与验证
 
