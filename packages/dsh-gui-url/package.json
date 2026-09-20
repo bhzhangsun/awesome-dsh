@@ -1,0 +1,60 @@
+{
+  "name": "@bhzhangsun/dsh-gui-url",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A `gui_url` model tool that returns this process's authenticated DSH Web GUI URL. The token is minted per process and never touches disk, so the tool is the only way to get a live one.",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "cordis.patch.yml"
+    },
+    "compatibility": {
+      "node": ">=22.18.0",
+      "dsh": ">=0.1.0"
+    },
+    "permissions": {
+      "summary": "读取本进程已存在的 webServer 端口与 connection token，拼成地址返回给模型；不写文件、不联网、不起子进程、不持有凭证。",
+      "commands": [],
+      "writePaths": [],
+      "externalServices": "无。它只读取本进程内已经存在的两个宿主服务，不代发任何请求。",
+      "failureBoundaries": "服务器未监听或 profile 无 Web GUI 时明确回答拿不到，而不是给出一个必然失败的地址；工具本身不抛异常。",
+      "lifecycleEvidence": "test/gui-url.test.js"
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "typecheck": "node --check src/index.js",
+    "check": "npm run typecheck && npm test"
+  },
+  "keywords": [
+    "deepseek",
+    "dsh",
+    "cordis",
+    "plugin",
+    "gui",
+    "url",
+    "token",
+    "tool"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bhzhangsun/awesome-dsh.git",
+    "directory": "packages/dsh-gui-url"
+  },
+  "homepage": "https://github.com/bhzhangsun/awesome-dsh/tree/main/packages/dsh-gui-url#readme",
+  "bugs": {
+    "url": "https://github.com/bhzhangsun/awesome-dsh/issues"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-tools": "0.1.2-rc.1"
+  }
+}

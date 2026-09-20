@@ -30,6 +30,7 @@ pnpm install
 | [`@bhzhangsun/dsh-computer-use`](./packages/dsh-computer-use) | Computer Use: virtual-cursor desktop automation with native vision, 20 model-facing tools, backed by cua-driver. | Plain ESM JavaScript, no build step — a fork of [`988hj7tczd-oss/dsh-computer-use`](https://github.com/988hj7tczd-oss/dsh-computer-use), see its `NOTICE` |
 | [`@bhzhangsun/dsh-agent-server`](./packages/dsh-agent-server) | Turns dsh into a headless AI agent server: installs the `server` profile (HTTP/WS API, browser GUI off) with the `server` agent preset (pure-reasoning orchestration), then `dsh --profile server`. Ships a reference reverse proxy for business-owned, per-route auth. | Plain ESM JavaScript, no build step |
 | [`@bhzhangsun/dsh-retry-gate`](./packages/dsh-retry-gate) | Admission gate for per-model TPM/RPM limits: concurrent sessions queue at `llm/stream` instead of all colliding with the same 429. Learns each model's real ceiling from the first 429 it sees, so the configured limit is only a starting point. | Plain ESM JavaScript, no build step, zero dependencies |
+| [`@bhzhangsun/dsh-gui-url`](./packages/dsh-gui-url) | A `gui_url` model tool that returns this process's authenticated Web GUI URL, so an agent can open the GUI itself instead of asking a human to paste a token that rotates on every restart and is never written to disk. | Plain ESM JavaScript, no build step |
 
 ## Layout
 
@@ -46,7 +47,8 @@ pnpm install
     ├── dsh-media/          # TypeScript package (tsdown client bundle)
     ├── dsh-computer-use/   # plain-ESM JavaScript package (no build step)
     ├── dsh-agent-server/   # plain-ESM JavaScript package (installs a dsh profile + preset)
-    └── dsh-retry-gate/     # plain-ESM JavaScript package (a host-plane `llm/stream` gate)
+    ├── dsh-retry-gate/     # plain-ESM JavaScript package (a host-plane `llm/stream` gate)
+    └── dsh-gui-url/       # plain-ESM JavaScript package (a `gui_url` model tool)
 ```
 
 ## Package conventions
@@ -58,8 +60,9 @@ pnpm install
 - Each package exposes the standard lifecycle scripts: `build`, `typecheck`,
   `test`, `clean`. Run them across the whole workspace with
   `pnpm -r <script>` (e.g. `pnpm build`).
-- **Exception:** `packages/dsh-computer-use`, `packages/dsh-agent-server` and
-  `packages/dsh-retry-gate` are plain ESM JavaScript with no build step. They
+- **Exception:** `packages/dsh-computer-use`, `packages/dsh-agent-server`,
+  `packages/dsh-retry-gate` and `packages/dsh-gui-url` are plain ESM JavaScript with
+  no build step. They
   therefore expose `typecheck` (a `node --check` syntax gate), `test`, and
   `check`, and `pnpm -r build` simply skips them. Prefer `.js` here over
   introducing a bundler for a fork that tracks an upstream written in JS, for an

@@ -1,0 +1,10 @@
+# @bhzhangsun/dsh-gui-url bundle patch
+#
+# 这是 **HOST 平面**的一行：它要读的是宿主进程自己的 `webServer` 端口与
+# `connection` token，两者都只存在于宿主进程里，放进 agent preset 拿不到。
+#
+# 安装后由 `dsh plugin --profile <name> add` 或 profiles/<name>/package.json 的
+# dsh.profile.bundles 引入；本文件声明 insert 行，profile 启动时合并。
+- insert:
+    - id: '@bhzhangsun/dsh-gui-url'
+      name: '@bhzhangsun/dsh-gui-url'
