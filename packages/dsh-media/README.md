@@ -23,7 +23,7 @@ load.
   either an absolute `http(s)` URL or a local file reference; local files are
   served over HTTP. The tool result text also lists the resolved browser URLs, so
   the model can emit them in a fence.
-- **Client** (`src/client/fenceRenderer.ts`) scans assistant replies for
+- **Client** (`src/client/fenceRenderer.ts`) watches assistant replies for
   ` ```dsh-media ` code fences and replaces each with a block-level player.
   Because the player lives in the message body, it stays visible even when the
   turn-process disclosure is folded.
@@ -31,6 +31,28 @@ load.
 The player is deliberately **not** rendered from the `tool/result` node: the
 `media_render` output stays inside the tool-call area (which folds), while the
 message body carries the player.
+
+### Update semantics — on demand, never rebuilt for free
+
+The player is mounted from the DOM side, so it has to survive a conversation that
+re-renders continuously. A fence element is therefore never the identity of a
+player:
+
+- **Only touched fences are examined.** The `MutationObserver` reacts to a batch
+  only when it adds, removes, or edits a fence (or pulls one of our mount
+  containers out of the tree). There is no whole-page rescan, and churn inside a
+  running player — its seek bar, its timer — is ignored.
+- **Parsing is memoized** per fence body and info string, so a streaming reply is
+  not re-`JSON.parse`d on every mutation.
+- **Rendering is diffed.** A player re-renders only when its items really change;
+  with an unchanged `url` React keeps the same `<audio>`/`<video>` element, so a
+  new title or caption refetches nothing.
+- **A player outlives its fence.** When React replaces a fence element — or a
+  whole message subtree — with fresh nodes, the live player is parked and
+  re-homed onto the equivalent fence (identical items) or re-attached to the same
+  fence, keeping the media element and its playback state. Only a fence that
+  stays gone for a full second tears its player down, so real edits and deletions
+  still clean up.
 
 ### Why the fence renderer matches the wrapper
 
