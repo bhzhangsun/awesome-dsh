@@ -170,6 +170,56 @@ const CSS = `
 .dsh-media-block__video:hover .dsh-media-block__video-title {
   opacity: 1;
 }
+
+/* A player whose media cannot load: say so, instead of a bar at 0:00 or a black
+   frame that reads as a broken render. */
+.dsh-media-block__missing {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: currentColor;
+  color-scheme: dark light;
+}
+.dsh-media-block__missing-text {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.dsh-media-block__missing-title {
+  font-weight: 600;
+}
+.dsh-media-block__missing-name,
+.dsh-media-block__missing-hint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dsh-media-block__missing-hint {
+  color: color-mix(in srgb, currentColor 62%, transparent);
+}
+.dsh-media-block__missing-retry {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.dsh-media-block__missing-retry:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
 `
 
 export function installMediaStyles(): () => void {

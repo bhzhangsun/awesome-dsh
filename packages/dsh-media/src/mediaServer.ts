@@ -1,9 +1,9 @@
 import { createReadStream, existsSync, statSync } from 'node:fs'
 import { extname, isAbsolute, resolve } from 'node:path'
-import { randomBytes } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { mediaTokenStore } from './mediaStore.js'
 
 /**
  * Route prefix the /media handler is registered under. Deliberately WITHOUT a
@@ -16,6 +16,14 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 const MEDIA_PREFIX = '/media'
 /** `MEDIA_PREFIX` with its trailing slash, used to build the URL and strip the token from a pathname. */
 const MEDIA_URL_PREFIX = `${MEDIA_PREFIX}/`
+
+function mimeFor(path: string): string {
+  return MIME[extname(path).toLowerCase()] ?? 'application/octet-stream'
+}
+
+function baseHost(host: string): string {
+  return host === '0.0.0.0' || host === '::' || host === '::1' ? '127.0.0.1' : host
+}
 
 /** Extension → media MIME, so the browser picks the right player/codec. */
 const MIME: Record<string, string> = {
@@ -32,36 +40,6 @@ const MIME: Record<string, string> = {
   '.webm': 'video/webm',
   '.mov': 'video/quicktime',
   '.mkv': 'video/x-matroska',
-}
-
-/** token → absolute file path, so url tokens never expose the real pathname. */
-const served = new Map<string, string>()
-/** token → insertion time (ms), for bounded eviction. */
-const servedAt = new Map<string, number>()
-const TOKEN_TTL_MS = 60 * 60 * 1000 // 1h
-const MAX_TOKENS = 1024
-
-function pruneServed(now: number): void {
-  for (const [token, at] of servedAt) {
-    if (now - at > TOKEN_TTL_MS) {
-      served.delete(token)
-      servedAt.delete(token)
-    }
-  }
-  while (served.size > MAX_TOKENS) {
-    const oldest = servedAt.keys().next().value
-    if (oldest === undefined) break
-    served.delete(oldest)
-    servedAt.delete(oldest)
-  }
-}
-
-function mimeFor(path: string): string {
-  return MIME[extname(path).toLowerCase()] ?? 'application/octet-stream'
-}
-
-function baseHost(host: string): string {
-  return host === '0.0.0.0' || host === '::' || host === '::1' ? '127.0.0.1' : host
 }
 
 /**
@@ -108,19 +86,20 @@ export function registerMediaRoute(ctx: Context): () => void {
  * Publish an absolute media file as a browser-reachable http URL. Returns
  * `undefined` when the host webserver is not yet listening (no port), in which
  * case the caller should reject or fall back to a plain text link.
+ *
+ * The token is persisted (see {@link mediaTokenStore}), because the URL ends up
+ * in the transcript and has to keep resolving after a restart — a client reload
+ * alone already re-requests it. Re-publishing an already-published file reuses
+ * its token, so a reply and a later re-render share one URL.
  */
 export function publishMediaUrl(ctx: Context, absPath: string): string | undefined {
-  const now = Date.now()
-  pruneServed(now)
-  const token = randomBytes(12).toString('hex')
-  served.set(token, absPath)
-  servedAt.set(token, now)
-  ctx.logger.info(`[dsh-media] serving ${absPath} as /media/${token}`)
   const { host, port } = ctx.webServer
   if (port === undefined || host === undefined) {
     ctx.logger.warn('[dsh-media] webServer not listening; cannot publish a media URL')
     return undefined
   }
+  const token = mediaTokenStore().mint(absPath)
+  ctx.logger.info(`[dsh-media] serving ${absPath} as /media/${token}`)
   return `http://${baseHost(host)}:${port}${MEDIA_URL_PREFIX}${token}`
 }
 
@@ -139,8 +118,8 @@ function serveMedia(req: IncomingMessage, res: ServerResponse): void {
     return
   }
   const token = pathname.slice(MEDIA_URL_PREFIX.length).replace(/\/+$/, '')
-  const absPath = served.get(token)
-  if (absPath === undefined || !existsSync(absPath)) {
+  const absPath = mediaTokenStore().resolve(token)
+  if (absPath === undefined) {
     sendText(res, 404, 'not found')
     return
   }

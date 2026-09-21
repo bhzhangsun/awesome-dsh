@@ -1,9 +1,34 @@
 import { useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { MediaItem } from '../shared/types.js'
+import { resolveMediaSrc } from './mediaUrl.js'
 
 interface InlineMediaProps {
   items: MediaItem[]
+}
+
+/**
+ * Shown when a player cannot load its media at all: the file is gone, the token
+ * no longer resolves, or the codec is unsupported. Without it the failure is a
+ * bar stuck at 0:00 or a black rectangle, which says nothing about the cause.
+ */
+function MediaUnavailable({ item, onRetry }: { item: MediaItem; onRetry?: () => void }) {
+  return (
+    <span className="dsh-media-block__missing" role="status">
+      <span className="dsh-media-block__missing-text">
+        <strong className="dsh-media-block__missing-title">Media unavailable</strong>
+        <span className="dsh-media-block__missing-name">{item.title || item.url}</span>
+        <span className="dsh-media-block__missing-hint">
+          The file may have been moved or deleted, or the link no longer resolves.
+        </span>
+      </span>
+      {onRetry ? (
+        <button type="button" className="dsh-media-block__missing-retry" onClick={onRetry}>
+          Retry
+        </button>
+      ) : null}
+    </span>
+  )
 }
 
 function PlayIcon() {
@@ -62,6 +87,20 @@ function InlineAudio({ item }: { item: MediaItem }) {
   const [current, setCurrent] = useState(0)
   const [duration, setDuration] = useState(0)
   const [rate, setRate] = useState(1)
+  const [failed, setFailed] = useState(false)
+  const src = resolveMediaSrc(item.url)
+
+  const retry = () => {
+    const a = audioRef.current
+    setFailed(false)
+    if (a === null) return
+    try {
+      a.load()
+    } catch {
+      // A browser that refuses to reload still gets a fresh render attempt.
+      void a.play().catch(() => {})
+    }
+  }
 
   const togglePlay = () => {
     const a = audioRef.current
@@ -95,18 +134,20 @@ function InlineAudio({ item }: { item: MediaItem }) {
     <span className="dsh-media-block__audio">
       <audio
         ref={audioRef}
-        src={item.url}
+        src={src}
         preload="metadata"
         className="dsh-media-block__audio-src"
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onEnded={() => setPlaying(false)}
+        onError={() => setFailed(true)}
         onTimeUpdate={(e) => setCurrent(e.currentTarget.currentTime)}
         onLoadedMetadata={(e) => {
           const d = e.currentTarget.duration
           setDuration(typeof d === 'number' && Number.isFinite(d) ? d : 0)
         }}
       />
+      {failed ? <MediaUnavailable item={item} onRetry={retry} /> : (
       <span className="dsh-media-block__audio-bar">
         <span className="dsh-media-block__audio-left">
           <button
@@ -151,6 +192,7 @@ function InlineAudio({ item }: { item: MediaItem }) {
           </button>
         </span>
       </span>
+      )}
       {item.caption ? <span className="dsh-media-block__caption">{item.caption}</span> : null}
     </span>
   )
@@ -159,15 +201,34 @@ function InlineAudio({ item }: { item: MediaItem }) {
 // Block-level video: render the native <video controls> directly, full width —
 // no placeholder and no overlay popover.
 function InlineVideo({ item }: { item: MediaItem }) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [failed, setFailed] = useState(false)
+  const src = resolveMediaSrc(item.url)
+
+  const retry = () => {
+    const video = videoRef.current
+    setFailed(false)
+    if (video === null) return
+    try {
+      video.load()
+    } catch {
+      // A browser that refuses to reload still gets a fresh render attempt.
+    }
+  }
+
   return (
     <span className="dsh-media-block__video">
-      <video
-        src={item.url}
-        controls
-        preload="metadata"
-        poster={item.poster}
-        className="dsh-media-block__video-player"
-      />
+      {failed ? <MediaUnavailable item={item} onRetry={retry} /> : (
+        <video
+          ref={videoRef}
+          src={src}
+          controls
+          preload="metadata"
+          poster={item.poster}
+          className="dsh-media-block__video-player"
+          onError={() => setFailed(true)}
+        />
+      )}
       {item.title ? <span className="dsh-media-block__video-title">{item.title}</span> : null}
       {item.caption ? <span className="dsh-media-block__caption">{item.caption}</span> : null}
     </span>

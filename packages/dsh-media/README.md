@@ -108,8 +108,35 @@ referenced by `file://`. Instead the plugin:
 The route supports `Range` requests so video can seek. Because the URL is
 token-based (never the real pathname) and only minted by the agent's
 `media_render` call, the host only exposes files the agent explicitly asked to
-render — it is not a general file browser. Tokens expire after one hour and the
-map is bounded.
+render — it is not a general file browser.
+
+### The mapping is persisted, and tokens never expire
+
+A `dsh-media` fence is **stored text**: it carries its URL into the transcript,
+where it is requested again on every page load, in later sessions, and long after
+the process that minted it exited. So the map lives in
+`${DSH_HOME:-~/.dsh}/storages/dsh-media/served.json` and is restored at startup by
+every process that serves it:
+
+- a **restart** (or a client reload that follows one) no longer turns the players
+  in older replies into 404s;
+- tokens have **no TTL** — an old reply keeps playing;
+- re-publishing the same file reuses its token, so a reply and a later re-render
+  share one URL;
+- entries whose file is gone are dropped at load, and the map is capped at 4096
+  entries, so the file cannot grow without bound;
+- several DSH processes (the desktop app and a `dsh` CLI session, say) share the
+  one file: a write merges what is already there, and a miss re-reads it once
+  before answering 404, so neither process can strand the other's URLs.
+
+The client also re-homes a `/media/<token>` URL onto the origin serving the page
+(`resolveMediaSrc`), so a URL minted on another port — the port is chosen at
+startup — still resolves. A player that cannot load anything at all says so
+instead of sitting at 0:00 or showing a black frame.
+
+The mapping only starts existing from the version that introduced it: a token
+minted by an earlier version is gone with the process that minted it, and that
+reply's player can only be fixed by rendering the media again.
 
 ## Layout
 
@@ -119,6 +146,7 @@ src/
   tool.ts             # media_render tool + /media route wiring
   projection.ts       # result helpers (mediaRenderResult / normalizeMediaItems)
   mediaServer.ts      # local-file resolution + /media/<token> HTTP serving
+  mediaStore.ts       # the persisted token → file map (survives a restart)
   skillContent.ts     # runtime skill text
   shared/
     schema.ts         # tool JSON schema + validation helpers
@@ -126,10 +154,14 @@ src/
   client/
     index.ts          # client entry: styles + fence renderer
     fenceRenderer.ts  # replaces dsh-media fences with block-level players
-    InlineMedia.tsx   # the audio player bar and the video block
+    InlineMedia.tsx   # the audio player bar, the video block, the failure notice
+    mediaUrl.ts       # re-homes a /media/<token> url onto this page's origin
     styles.ts         # injected CSS
 test/
   media.test.ts       # pure host-logic tests
+  mediaStore.test.ts  # token persistence across a restart, via the real route
+  client.test.ts      # url re-homing + the media-unavailable state
+  fenceRenderer.test.ts # the fence renderer, in jsdom with real React
 ```
 
 ## Build scripts
