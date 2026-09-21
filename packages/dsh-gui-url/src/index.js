@@ -41,16 +41,41 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 
 export const name = 'dsh-gui-url'
 
+/** 声明本插件依赖的服务：tools —— 没有它，ctx.tools 会抛 "cannot get property without inject"。 */
+export const inject = ['tools']
+
 /** 模型看到的工具名。 */
 export const TOOL_NAME = 'gui_url'
 
+/*
+ * 描述是工具能不能被"命中"的唯一入口 —— 模型不会因为一个工具名叫 gui_url，就在需要
+ * 调试客户端时想起它。选择发生在**场景匹配**上，所以这里必须把场景点名，而不是写一句
+ * 概括。三件事缺一不可：
+ *
+ *   1. 说清它是什么（本进程客户端的地址，token 已内嵌，打开即用）；
+ *   2. 罗列真实触发场景（改了客户端代码要验证、用户要地址、要读界面的真实状态）；
+ *   3. 接上后续动作（改动要刷新才可见、别只凭源码就说界面改好了）。
+ *
+ * 定稿前请对照测试里的触发词断言 —— 有人"精简"掉场景列表时，那条测试会红。
+ */
 const DESCRIPTION = [
-  'Return the authenticated URL of this process\'s DSH Web GUI, to open in a browser.',
+  'Return this process\'s DSH Web GUI URL, with its authentication token already embedded so',
+  'it opens in a browser without a login prompt. This GUI is the client you are running in --',
+  'the page the user is reading.',
   '',
-  'Use it whenever you need to look at the GUI yourself, or when the user asks for the',
-  'address. The token in the URL is minted per process, so it CHANGES ON EVERY RESTART:',
-  'never reuse a URL you saw earlier in the conversation, and never try to find one in a',
-  'log or a leftover file -- those belong to dead processes and will return 401.',
+  'Use it when the work needs the CLIENT, not the terminal:',
+  '- you changed client-side code (a client plugin, a Slot, a tab, a theme token, the web',
+  '  shell) and need to see whether it actually renders;',
+  '- the user asks for the GUI address, the debug URL, or how to open the client;',
+  '- you need the live UI\'s real state rather than inferring it from source.',
+  '',
+  'A client-side change only shows after the page is REFRESHED, and outside `pnpm run dev:web`',
+  'the web artifacts must be rebuilt first: fetch this URL, refresh, and verify there -- never',
+  'report a UI change as working from source alone.',
+  '',
+  'The token is minted per process, so it CHANGES ON EVERY RESTART: never reuse a URL from',
+  'earlier in the conversation, and never reconstruct one from a log or a leftover file --',
+  'those belong to dead processes and will return 401. Call this tool again instead.',
   '',
   'Call it with no arguments.',
 ].join('\n')
@@ -102,3 +127,5 @@ export function apply(ctx) {
     },
   }))
 }
+
+export default { name, inject, apply }

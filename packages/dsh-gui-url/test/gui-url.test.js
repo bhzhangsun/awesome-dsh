@@ -26,6 +26,29 @@ describe('gui_url 工具', () => {
     assert.match(definition.description, /CHANGES ON EVERY RESTART/)
   })
 
+  /*
+   * 工具被选中的依据是描述里的**场景**，不是名字。这条测试挡的是"把描述精简成一句话"
+   * 这种改动 —— 那种描述读起来更干净，但模型在需要调试客户端时就想不起这个工具。
+   */
+  it('描述里点名了触发场景与后续动作，而不只是"要看 GUI 时用"', () => {
+    const { description } = register({})
+    const mustSay = [
+      /client you are running in/i,          // 它就是这个客户端本身，不是别的 dev server
+      /client-side code/i,                   // 场景一：改了客户端代码要验证
+      /Slot/i,                               //   把具体的客户端概念点出来
+      /theme token/i,
+      /asks for the GUI address/i,           // 场景二：用户直接要地址
+      /debug URL/i,
+      /real state rather than inferring/i,   // 场景三：要真实界面状态
+      /REFRESHED/,                           // 后续动作：改完要刷新才可见
+      /never\s+report a UI change as working from source alone/i,
+      /no arguments/i,
+    ]
+    for (const pattern of mustSay) {
+      assert.match(description, pattern, `描述缺少触发场景: ${String(pattern)}`)
+    }
+  })
+
   it('返回服务器实际监听端口上的带 token 地址', async () => {
     const definition = register({
       webServer: server(43120),
