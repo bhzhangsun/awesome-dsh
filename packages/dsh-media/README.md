@@ -134,9 +134,32 @@ The client also re-homes a `/media/<token>` URL onto the origin serving the page
 startup — still resolves. A player that cannot load anything at all says so
 instead of sitting at 0:00 or showing a black frame.
 
-The mapping only starts existing from the version that introduced it: a token
-minted by an earlier version is gone with the process that minted it, and that
-reply's player can only be fixed by rendering the media again.
+### Recovery from session history
+
+The map only starts existing from the version that introduced it, so URLs minted
+before it are gone with the process that minted them. They are recoverable
+anyway, because the session log still records both halves of every render: the
+`tool/call` event carries the file reference the tool was given, and the
+`tool/result` event carries the token URL it published. `sessionLog.ts` pairs them
+by call id, and `historyHeal.ts` resolves each reference against the session's own
+`cwd` and adopts the token — reviving the players in **existing** replies without
+the files being rendered again.
+
+The pass runs in the background when the plugin activates, and again on demand
+when a request arrives for a token this process has never seen, so the very
+request that would have 404'd is served instead. It stays cheap: newest log first,
+logs whose size and mtime are unchanged since the previous pass are skipped, and a
+wall-clock budget bounds the walk. On a real tree of ~110 logs / 130 MB it
+recovers everything in about 6 seconds, yielding to the event loop between logs.
+
+Two details worth knowing, both of which cost a debugging session to learn:
+
+- a session log is JSONL **appended in zstd frames** (one per flush), so a long
+  session is thousands of frames in one file. Decompressing the file as a single
+  stream returns only the first frame — the session header — and recovers nothing;
+- sessions are nested by workspace, and some directories are named by raw UUID
+  rather than `session-<id>`, so the walk is recursive instead of a fixed-depth
+  glob.
 
 ## Layout
 
@@ -147,6 +170,8 @@ src/
   projection.ts       # result helpers (mediaRenderResult / normalizeMediaItems)
   mediaServer.ts      # local-file resolution + /media/<token> HTTP serving
   mediaStore.ts       # the persisted token → file map (survives a restart)
+  historyHeal.ts      # recovers tokens from session logs (revives old replies)
+  sessionLog.ts       # reads a zstd-framed session log for media_render calls
   skillContent.ts     # runtime skill text
   shared/
     schema.ts         # tool JSON schema + validation helpers
@@ -160,8 +185,11 @@ src/
 test/
   media.test.ts       # pure host-logic tests
   mediaStore.test.ts  # token persistence across a restart, via the real route
+  historyHeal.test.ts # recovery from planted session logs, incremental passes
+  sessionLog.test.ts  # the zstd-frame reader and the call/result pairing
   client.test.ts      # url re-homing + the media-unavailable state
   fenceRenderer.test.ts # the fence renderer, in jsdom with real React
+  logFixture.ts       # builds zstd-framed session logs for those tests
 ```
 
 ## Build scripts
@@ -177,7 +205,8 @@ pnpm clean          # remove lib/
 
 - **Host** (`ctx.logger`): activation, `/media` route registration, each
   `media_render` call, URL resolution (`http(s)` pass-through vs local file →
-  served URL), and rejections.
+  served URL), the count of media URLs recovered from session history, and
+  rejections.
 - **Client** (`console`): fence-renderer activation.
 
 ## Known limitations

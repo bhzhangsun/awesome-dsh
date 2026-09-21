@@ -4,7 +4,7 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import { isHttpUrl, mediaItemsParameterSchema, mediaRenderOutputSchema } from './shared/schema.js'
 import type { MediaItem } from './shared/types.js'
 import { mediaRenderResult, normalizeMediaItems } from './projection.js'
-import { publishMediaUrl, registerMediaRoute, resolveMediaFile } from './mediaServer.js'
+import { publishMediaUrl, registerMediaRoute, resolveMediaFile, startMediaHistoryHeal } from './mediaServer.js'
 import { MEDIA_SKILL_CONTENT, MEDIA_SKILL_DESCRIPTION, MEDIA_SKILL_NAME } from './skillContent.js'
 
 const TOOL_NAME = 'media_render'
@@ -27,6 +27,7 @@ export function apply(ctx: Context): void {
   ctx.logger.info('[dsh-media] activating media_render tool + /media file route')
 
   ctx.effect(() => registerMediaRoute(ctx), 'dsh-media: media file route')
+  startMediaHistoryHeal(ctx)
 
   const skills = ctx.get('skills')
   if (skills !== undefined) {

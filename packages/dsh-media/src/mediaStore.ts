@@ -158,6 +158,32 @@ export class MediaTokenStore {
     return token
   }
 
+  /**
+   * Record a token that an *earlier* process minted, recovered from a session log
+   * (see {@link MediaHistoryHealer}). The reply already carries this exact token,
+   * so it is adopted as-is; a token that is already known is never repointed.
+   */
+  adopt(token: string, absPath: string): boolean {
+    const added = this.insert(token, absPath)
+    if (added) this.persist()
+    return added
+  }
+
+  /** {@link adopt} for a whole batch, with one write for the batch. */
+  adoptAll(entries: Iterable<{ token: string; path: string }>): number {
+    let added = 0
+    for (const entry of entries) if (this.insert(entry.token, entry.path)) added += 1
+    if (added > 0) this.persist()
+    return added
+  }
+
+  private insert(token: string, absPath: string): boolean {
+    this.ensureLoaded()
+    if (this.tokens.has(token) || !isFile(absPath)) return false
+    this.tokens.set(token, { path: absPath, at: Date.now() })
+    return true
+  }
+
   /** The file a live token serves, or `undefined` when it is unknown or gone. */
   resolve(token: string): string | undefined {
     this.ensureLoaded()

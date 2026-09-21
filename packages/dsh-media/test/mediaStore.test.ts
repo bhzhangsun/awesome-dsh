@@ -59,7 +59,9 @@ async function request(url: string): Promise<{ status: number | undefined; heade
   } as unknown as Parameters<typeof registerMediaRoute>[0]
   registerMediaRoute(ctx)
   const { res, finished, body } = fakeResponse()
-  handler?.({ method: 'GET', url, headers: {} }, res)
+  // The handler is async: an unknown token first tries to recover it from session
+  // history, so the response may only be produced after that pass.
+  await handler?.({ method: 'GET', url, headers: {} }, res)
   await finished
   return { status: res.statusCode, headers: res.headers, body: body() }
 }

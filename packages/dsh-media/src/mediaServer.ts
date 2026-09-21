@@ -3,6 +3,7 @@ import { extname, isAbsolute, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { MediaHistoryHealer } from './historyHeal.js'
 import { mediaTokenStore } from './mediaStore.js'
 
 /**
@@ -79,7 +80,39 @@ export function resolveMediaFile(cwd: string | undefined, ref: string): string |
 /** Register the `/media/<token>` static route on the host webserver. */
 export function registerMediaRoute(ctx: Context): () => void {
   ctx.logger.info('[dsh-media] registering /media file route')
+  mediaHistoryHealer(ctx)
   return ctx.webServer.register({ kind: 'prefix', path: MEDIA_PREFIX, handler: serveMedia })
+}
+
+let healer: MediaHistoryHealer | undefined
+
+/**
+ * The process-wide history healer (see {@link MediaHistoryHealer}), wired to the
+ * tool's own local-file resolution so a recovered reference is checked the same
+ * way a fresh `media_render` call would be.
+ */
+function mediaHistoryHealer(ctx: Context): MediaHistoryHealer {
+  healer ??= new MediaHistoryHealer({
+    store: mediaTokenStore(),
+    resolve: (cwd, ref) => resolveMediaFile(cwd, ref) ?? undefined,
+    logger: ctx.logger,
+  })
+  return healer
+}
+
+/**
+ * Start the background recovery pass that revives media URLs in *older* replies.
+ * The fiber owns it: disposing the plugin aborts the pass.
+ */
+export function startMediaHistoryHeal(ctx: Context): void {
+  const abort = new AbortController()
+  ctx.effect(
+    () => () => abort.abort(),
+    'dsh-media: session-history recovery',
+  )
+  void mediaHistoryHealer(ctx).heal(abort.signal).catch((error: unknown) => {
+    ctx.logger.warn(`[dsh-media] session-history recovery failed: ${String(error)}`)
+  })
 }
 
 /**
@@ -109,7 +142,7 @@ function sendText(res: ServerResponse, status: number, body: string, contentType
 }
 
 /** Serve one token-mapped file, honouring `Range` for media seeking. */
-function serveMedia(req: IncomingMessage, res: ServerResponse): void {
+async function serveMedia(req: IncomingMessage, res: ServerResponse): Promise<void> {
   let pathname = ''
   try {
     pathname = decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname)
@@ -118,7 +151,15 @@ function serveMedia(req: IncomingMessage, res: ServerResponse): void {
     return
   }
   const token = pathname.slice(MEDIA_URL_PREFIX.length).replace(/\/+$/, '')
-  const absPath = mediaTokenStore().resolve(token)
+  const store = mediaTokenStore()
+  let absPath = store.resolve(token)
+  if (absPath === undefined && healer !== undefined) {
+    // The URL predates this process: the reply it belongs to is in a session log,
+    // which still records which file the token was minted for. Recover it and serve
+    // this very request, so an old reply plays without being rendered again.
+    await healer.healToken(token)
+    absPath = store.resolve(token)
+  }
   if (absPath === undefined) {
     sendText(res, 404, 'not found')
     return
