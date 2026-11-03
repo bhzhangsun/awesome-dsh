@@ -91,7 +91,7 @@ export async function ensureDriver(cfg) {
  */
 async function bootstrapInstaller(cfg) {
   const cmd = cfg.driverInstallCommand
-    || 'curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/install.sh | sh'
+    || 'curl -fsSL https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.38.0/install.sh | sh'
   await runShell(cmd, 'official-installer')
 }
 

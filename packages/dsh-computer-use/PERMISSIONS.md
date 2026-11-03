@@ -24,7 +24,7 @@
 仅在 `cua-driver` 二进制缺失时发生，且受 `autoInstallDriver` 开关控制：
 
 - **方式 A（默认，`driverInstallMethod: installer`）**：运行 `driverInstallCommand`
-  （默认 `curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/install.sh | sh`）。
+  （默认 `curl -fsSL https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.38.0/install.sh | sh`）。
   这是本插件**唯一使用 `shell: true` 的地方**（curl|sh 管道必需），只在此一次性引导触发。
 - **方式 B（`direct`）**：`fetch` 直连 `driverReleaseUrl` 下载预编译二进制到缓存目录，
   可选 SHA256 校验（`driverReleaseSha256`）后落盘。
