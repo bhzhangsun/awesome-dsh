@@ -38,9 +38,11 @@
  *     不可用时回退 GLM 免费模型。
  *   - ax：零成本 AX 树；AX 树为空时自动降级 native → vision → ax。
  *
- * 零配置（本分支）：加载时自动引导安装 cua-driver（缺失时）、自动起常驻 daemon、
- * 自动权限引导、自动自更新。正常运行期本插件仍只 spawn cua-driver；仅“首次引导”
- * 会联网+写一次文件，已在 package.json 的 dsh.permissions 与 PERMISSIONS.md 如实声明。
+ * 零配置（本分支）：加载时**后台**引导安装 cua-driver（缺失时）、后台起常驻 daemon、
+ * 后台做权限引导与自更新。这些准备动作一律不阻塞 apply()——引导安装会下载约 100MB 的引擎包，
+ * 若在 apply 里同步等待，插件条目会长期停留在 loading（工具不注册、GUI 开关不可点）。
+ * 正常运行期本插件仍只 spawn cua-driver；仅“首次引导”会联网 + 写一次文件，
+ * 已在 package.json 的 dsh.permissions 与 PERMISSIONS.md 如实声明。
  *
  * 并发安全：DSH 插件每 profile 单实例、会话共享。因此
  *   - 快照按 harness 会话 id 分桶（lib/snapshot.js），避免会话间串号；
@@ -203,16 +205,25 @@ export async function apply(ctx, config) {
     autoUpdate: config.autoUpdate !== false,
   }
 
-  // 零配置：加载期自动引导安装 + 起常驻 daemon（best-effort，不阻断工具注册）。
-  try {
-    await ensureDriver(cfg)
-    await ensureDaemon(cfg, ctx)
-  } catch (e) {
-    ctx.logger?.error?.(`cua-driver 初始化失败（工具调用可能受限）: ${e.message}`)
-  }
-  // 权限引导与自更新为非阻塞 best-effort（不阻断启动）。
-  void ensurePermissions(cfg, ctx).catch(() => undefined)
-  void ensureVersion(cfg, ctx).catch(() => undefined)
+  // 零配置：加载期自动引导安装 + 起常驻 daemon。
+  //
+  // 必须后台执行，**不能在 apply 里 await**：引导安装要下载 ~100MB 的引擎包，还可能等待
+  // 安装锁（上次安装被中断时安装器会 sleep 轮询最多 600s）。一旦 await，条目会长期停在
+  // loading：20 个工具不注册、系统提示不注入，GUI 的插件开关也会被判为不可操作
+  // （disabled = busy || readOnlyReason || entryId === undefined），用户表现为"开关点不动"。
+  // 工具本身不依赖二进制（只在调用时 spawn），所以这里只做后台 best-effort 准备。
+  void (async () => {
+    try {
+      await ensureDriver(cfg, ctx)
+      await ensureDaemon(cfg, ctx)
+    } catch (e) {
+      ctx.logger?.error?.(`cua-driver 初始化失败（工具调用可能受限）: ${e.message}`)
+      return
+    }
+    // 引擎就位后，权限引导与自更新同样是非阻塞 best-effort。
+    void ensurePermissions(cfg, ctx).catch(() => undefined)
+    void ensureVersion(cfg, ctx).catch(() => undefined)
+  })()
 
   /** 是否命中“权限 pending”：引擎返回权限未授予、需用户在系统设置点允许。 */
   const isPermissionsPending = (value, err) => {
