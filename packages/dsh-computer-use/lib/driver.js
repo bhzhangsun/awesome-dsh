@@ -26,7 +26,9 @@
  */
 
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, chmodSync, writeFileSync, readdirSync, unlinkSync } from 'node:fs'
+import {
+  existsSync, mkdirSync, chmodSync, writeFileSync, readdirSync, unlinkSync, readFileSync, rmSync, cpSync,
+} from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
@@ -43,8 +45,86 @@ export function cacheBinPath() {
   return join(cacheBinDir(), exe)
 }
 
-/** 当前已知良好版本（首次引导锁版本，之后交给 cua-driver 自更新）。 */
-const PINNED_VERSION = '0.23.2'
+/** 引导安装锁定的 cua-driver 版本（installer 命令与 direct 资产 URL 共用此常量）。 */
+const PINNED_VERSION = '0.38.0'
+export const RELEASE_TAG = `cua-driver-rs-v${PINNED_VERSION}`
+
+/**
+ * 平台/架构 → 官方 Release "binary" 变体资产名。
+ * 实测包结构（cua-driver-rs-v0.38.0）：
+ *   - windows-*-binary.zip：平铺 6 文件（cua-driver.exe / cua-cursor-theme.exe /
+ *     cua-driver-uia.exe / cua_driver_sdk.dll / cua_driver_node_runtime.node / cua_driver_abi.h），
+ *     **exe 不能直接落位，且 sdk.dll / uia.exe 必须与主 exe 同目录** → 必须解压后平铺提升。
+ *   - darwin-universal-binary.tar.gz：平铺 5 文件（cua-driver / cua-cursor-theme /
+ *     libcua_driver_sdk.dylib / cua_driver_node_runtime.node / cua_driver_abi.h），无嵌套目录。
+ *   - linux-*-binary.tar.gz：同 darwin 布局。
+ */
+export function releaseAssetFor(platform, arch) {
+  if (platform === 'win32') {
+    return arch === 'arm64'
+      ? `cua-driver-rs-${PINNED_VERSION}-windows-arm64-binary.zip`
+      : `cua-driver-rs-${PINNED_VERSION}-windows-x86_64-binary.zip`
+  }
+  if (platform === 'darwin') {
+    // darwin 官方只发 universal-binary（arm64/x64 通吃），无按架构的 -binary 变体
+    return `cua-driver-rs-${PINNED_VERSION}-darwin-universal-binary.tar.gz`
+  }
+  if (platform === 'linux') {
+    return arch === 'arm64'
+      ? `cua-driver-rs-${PINNED_VERSION}-linux-arm64-binary.tar.gz`
+      : `cua-driver-rs-${PINNED_VERSION}-linux-x86_64-binary.tar.gz`
+  }
+  return null
+}
+
+/** 官方 install.sh 的安装 home（其 HOME_DIR 默认值），用于定位它自己的安装锁。 */
+function driverInstallHome() {
+  return process.env.CUA_DRIVER_RS_HOME || join(homedir(), '.cua-driver')
+}
+
+/**
+ * 清理安装器留下的僵尸锁。
+ *
+ * 官方 install.sh 拿不到 `packages/.install.lock.d` 就 `sleep` 轮询，**必须等满 600 秒**
+ * 才会去检查锁里的 pid 是否还活着。上一次安装在下载途中被中断（关应用、kill、崩溃）时，
+ * 这个锁会一直留着，于是下一次安装白等 10 分钟——期间插件条目停留在 loading，
+ * 工具不注册、GUI 开关不可点。这里在引导安装前主动判定：持有者已死就直接删锁。
+ * @param {object} [ctx] 插件上下文，仅用于写日志。
+ * @returns {boolean} 是否清理了僵尸锁。
+ */
+export function clearStaleInstallLock(ctx) {
+  const lockDir = join(driverInstallHome(), 'packages', '.install.lock.d')
+  if (!existsSync(lockDir)) return false
+
+  let holder
+  try {
+    holder = readFileSync(join(lockDir, 'info'), 'utf8').match(/^pid=(\d+)/m)?.[1]
+  } catch {
+    holder = undefined
+  }
+
+  let alive = false
+  if (holder) {
+    try {
+      process.kill(Number(holder), 0)
+      alive = true
+    } catch {
+      alive = false
+    }
+  }
+  if (alive) {
+    ctx?.logger?.info?.(`cua-driver 安装锁由存活进程 ${holder} 持有，交由安装器自行等待`)
+    return false
+  }
+
+  try {
+    rmSync(lockDir, { recursive: true, force: true })
+  } catch {
+    return false
+  }
+  ctx?.logger?.warn?.(`已清理僵尸 cua-driver 安装锁（原持有者 pid=${holder ?? '未知'} 已不存在）`)
+  return true
+}
 
 let _daemonChild = null
 let _startedHere = false
@@ -56,9 +136,10 @@ let _grantRestartChain = null
 /**
  * 1. 确保 cua-driver 二进制存在；缺失则引导安装。
  * @param {object} cfg 插件配置（autoInstallDriver / driverInstallMethod / driverInstallCommand / driverRelease*）
+ * @param {object} [ctx] 插件上下文，仅用于写日志。
  * @returns {Promise<{installed:boolean, method?:string, path:string}>}
  */
-export async function ensureDriver(cfg) {
+export async function ensureDriver(cfg, ctx) {
   const existing = findBin()
   if (existing) return { installed: true, path: existing }
 
@@ -70,8 +151,16 @@ export async function ensureDriver(cfg) {
   }
 
   const method = cfg.driverInstallMethod || 'installer'
+  // 上一次安装被中断会留下死锁，安装器自己只会在 600s 后才回收，这里提前处理。
+  // Windows 上锁目录不存在，天然 no-op，无害。
+  clearStaleInstallLock(ctx)
   if (method === 'direct') {
-    await bootstrapDirect(cfg)
+    await bootstrapDirect(cfg, ctx)
+  } else if (process.platform === 'win32') {
+    // Windows：默认 installer 命令是 `curl|sh`（cmd.exe 无 sh，install.sh 是 POSIX 脚本）必败；
+    // 引擎官方有 Windows 预编译资产，这里自动降级 direct 直连下载。
+    ctx?.logger?.info?.('Windows 无官方 install.sh，自动改走 direct 直连下载预编译资产')
+    await bootstrapDirect(cfg, ctx)
   } else {
     await bootstrapInstaller(cfg)
   }
@@ -91,18 +180,24 @@ export async function ensureDriver(cfg) {
  */
 async function bootstrapInstaller(cfg) {
   const cmd = cfg.driverInstallCommand
-    || 'curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/install.sh | sh'
+    || `curl -fsSL https://github.com/trycua/cua/releases/download/${RELEASE_TAG}/install.sh | sh`
   await runShell(cmd, 'official-installer')
 }
 
 /**
- * 引导方式 B：直连 GitHub Release 下载平台/架构对应的预编译二进制 + SHA256 校验。
- * 由配置提供 URL 模板与校验和（driverReleaseUrl / driverReleaseSha256），不依赖外部脚本。
+ * 引导方式 B：直连 GitHub Release 下载平台/架构对应的预编译资产 + SHA256 校验 + 解压落位。
+ * URL/校验和均自动推断：未配 driverReleaseUrl 时按平台资产名拼官方 Release URL；
+ * 未配 driverReleaseSha256 时自动从官方 checksums.txt 取该资产的哈希（防投毒，取不到才跳过并告警）。
+ * Windows 的资产是 zip（内含 cua-driver.exe + cua_driver_sdk.dll 等 6 文件），必须解压平铺；
+ * darwin/linux 是 tar.gz（平铺 5 文件），同样解压后提升到 bin 根。
  */
-async function bootstrapDirect(cfg) {
+async function bootstrapDirect(cfg, ctx) {
+  const assetName = releaseAssetFor(process.platform, process.arch)
+  if (!assetName) {
+    throw new Error(`cua-driver 无 ${process.platform}/${process.arch} 预编译资产，请手动安装并设 CUA_DRIVER_BIN。`)
+  }
   const url = cfg.driverReleaseUrl
-  const expectedSha = cfg.driverReleaseSha256
-  if (!url) throw new Error('driverInstallMethod=direct 但未配置 driverReleaseUrl。')
+    || `https://github.com/trycua/cua/releases/download/${RELEASE_TAG}/${assetName}`
   const dir = cacheBinDir()
   mkdirSync(dir, { recursive: true })
   const target = cacheBinPath()
@@ -111,28 +206,148 @@ async function bootstrapDirect(cfg) {
   if (!res.ok) throw new Error(`下载 cua-driver 失败: HTTP ${res.status} (${url})`)
   const buf = Buffer.from(await res.arrayBuffer())
 
+  const expectedSha = cfg.driverReleaseSha256 || await officialChecksum(assetName)
   if (expectedSha) {
     const sha = createHash('sha256').update(buf).digest('hex')
     if (sha.toLowerCase() !== String(expectedSha).toLowerCase()) {
       throw new Error(`cua-driver 校验和不匹配（期望 ${expectedSha}，实际 ${sha}），已中止以防投毒。`)
     }
+  } else {
+    ctx?.logger?.warn?.('cua-driver 未取得校验和（配置与官方 checksums.txt 均不可得），跳过完整性校验')
   }
-  writeFileSync(target, buf, { mode: 0o755 })
+
+  // 归档资产：解压到临时目录再平铺提升到 bin 根（Windows 的 sdk.dll/uia.exe 必须与主 exe 同目录）。
+  if (/\.zip$|\.tar\.gz$/.test(url)) {
+    const extractDir = join(dir, `.extract-${Date.now()}`)
+    const archivePath = join(dir, assetName)
+    mkdirSync(extractDir, { recursive: true })
+    try {
+      writeFileSync(archivePath, buf)
+      await extractArchive(archivePath, extractDir)
+      flattenInto(extractDir, dir)
+    } finally {
+      rmSync(extractDir, { recursive: true, force: true })
+      rmSync(archivePath, { force: true })
+    }
+  } else {
+    writeFileSync(target, buf, { mode: 0o755 })  // 裸二进制（自定义 URL 直指 exe/elf 的旧用法兼容）
+  }
   chmodSync(target, 0o755)
 }
 
-/** 运行 shell 命令（仅用于一次性引导），捕获退出码与输出。 */
-function runShell(command, label) {
+/** 从官方 checksums.txt 取资产哈希（防投毒）；不可达/未命中返回 ''。 */
+export async function officialChecksum(assetName) {
+  try {
+    const res = await fetch(`https://github.com/trycua/cua/releases/download/${RELEASE_TAG}/checksums.txt`)
+    if (!res.ok) return ''
+    for (const line of (await res.text()).split('\n')) {
+      const m = line.match(/^([0-9a-fA-F]{64})\s+\*?(.+)$/)
+      if (m && m[2].trim() === assetName) return m[1]
+    }
+  } catch { /* 离线等：交由上层 warn */ }
+  return ''
+}
+
+/**
+ * 解压归档到 destDir（零依赖，全用系统自带工具）。
+ * Windows：优先自带 bsdtar（Win10 1803+ 内置且支持 zip），失败回退 PowerShell Expand-Archive；
+ * Unix：tar（zip 用 -xf，tar.gz 用 -xzf）。
+ */
+export async function extractArchive(archivePath, destDir) {
+  const isZip = archivePath.endsWith('.zip')
+  if (process.platform === 'win32') {
+    try {
+      await runArgv('tar', ['-xf', archivePath, '-C', destDir], 'extract-tar')
+    } catch {
+      await runArgv('powershell.exe', [
+        '-NoProfile', '-NonInteractive', '-Command',
+        `Expand-Archive -LiteralPath '${archivePath}' -DestinationPath '${destDir}' -Force`,
+      ], 'extract-powershell')
+    }
+  } else {
+    await runArgv('tar', [isZip ? '-xf' : '-xzf', archivePath, '-C', destDir], 'extract-tar')
+  }
+}
+
+/**
+ * 把解压产物**递归**平铺提升到 dest 根：嵌套目录里的文件同样提到根，
+ * 因为引擎主程序与 sdk（dll/dylib/uia helper）必须同目录才能加载。
+ * 官方 binary 包当前为扁平布局（实测），递归是为了兼容未来包结构引入顶层目录的变化。
+ * 同名冲突时后写入者覆盖（重复引导属预期）。
+ */
+export function flattenInto(srcDir, dest) {
+  for (const entry of readdirSync(srcDir, { withFileTypes: true })) {
+    const src = join(srcDir, entry.name)
+    if (entry.isDirectory()) {
+      flattenInto(src, dest)
+    } else {
+      cpSync(src, join(dest, entry.name), { force: true })
+    }
+  }
+}
+
+/** 按 argv 直接 spawn（不走 shell，避开 Windows 引号转义坑），带与 runShell 一致的硬超时。 */
+function runArgv(cmd, args, label, timeoutMs = 10 * 60_000) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'], env: process.env })
+    let err = ''
+    let settled = false
+    let timer
+    const finish = (fn, value) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      fn(value)
+    }
+    timer = setTimeout(() => {
+      try { child.kill('SIGTERM') } catch { /* 已退出 */ }
+      finish(reject, new Error(`${label} 超时（${Math.round(timeoutMs / 60000)} 分钟）`))
+    }, timeoutMs)
+    timer.unref?.()
+    child.stderr?.on('data', (d) => { if (err.length < 4096) err += d })
+    child.on('error', (e) => finish(reject, new Error(`${label} 启动失败: ${e.message}`)))
+    child.on('close', (code) => {
+      if (code === 0) finish(resolve, '')
+      else finish(reject, new Error(`${label} 失败 (exit ${code}): ${err.slice(0, 600)}`))
+    })
+  })
+}
+
+/**
+ * 跑一次性引导命令（curl|sh 之类的管道必需 shell:true）。
+ *
+ * 带硬超时：安装器可能在等锁、等网络、或在下载 100MB 引擎包；无论哪种都不能无限挂住，
+ * 否则后台准备永远不结束（旧版本更糟——它直接在 apply 里等，把整个插件条目拖在 loading）。
+ * @param {string} command 要执行的 shell 命令。
+ * @param {string} label 失败信息里的步骤名。
+ * @param {number} [timeoutMs] 超时毫秒数，默认 20 分钟。
+ * @returns {Promise<string>} 命令标准输出。
+ */
+function runShell(command, label, timeoutMs = 20 * 60_000) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, [], { shell: true, stdio: ['ignore', 'pipe', 'pipe'] })
     let out = ''
     let err = ''
+    let settled = false
+    let timer
+    const finish = (fn, value) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      fn(value)
+    }
+    timer = setTimeout(() => {
+      try { child.kill('SIGTERM') } catch { /* 已退出 */ }
+      setTimeout(() => { try { child.kill('SIGKILL') } catch { /* 已退出 */ } }, 5000).unref?.()
+      finish(reject, new Error(`${label} 超时（${Math.round(timeoutMs / 60000)} 分钟），已终止子进程`))
+    }, timeoutMs)
+    timer.unref?.()
     child.stdout?.on('data', (d) => { out += d })
     child.stderr?.on('data', (d) => { err += d })
-    child.on('error', (e) => reject(new Error(`${label} 启动失败: ${e.message}`)))
+    child.on('error', (e) => finish(reject, new Error(`${label} 启动失败: ${e.message}`)))
     child.on('close', (code) => {
-      if (code === 0) resolve(out)
-      else reject(new Error(`${label} 失败 (exit ${code}): ${(err || out).slice(0, 600)}`))
+      if (code === 0) finish(resolve, out)
+      else finish(reject, new Error(`${label} 失败 (exit ${code}): ${(err || out).slice(0, 600)}`))
     })
   })
 }

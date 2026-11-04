@@ -12,8 +12,8 @@
 **核心易用性提升（装好即用，零配置）**：
 
 - **一行安装**：`dsh plugin --profile desktop add @bhzhangsun/dsh-computer-use`，无需克隆仓库、无需手建软链。
-- **无需手动装驱动**：首次运行若检测不到 `cua-driver`，插件自动引导安装（官方安装器或直连 Release + SHA256 校验）。
-- **无需手动起服务**：插件加载时自动拉起 `cua-driver serve` 常驻进程，并在残留 socket 等异常后自愈；卸载时不误杀共享 daemon。
+- **无需手动装驱动**：首次运行若检测不到 `cua-driver`，插件后台引导安装（官方安装器或直连 Release + SHA256 校验）。引导安装**不阻塞插件加载**：工具先注册，引擎装好前调用会明确提示未找到二进制；安装器带超时，并自动清理上一次中断留下的死锁。
+- **无需手动起服务**：插件加载时后台拉起 `cua-driver serve` 常驻进程，并在残留 socket 等异常后自愈；卸载时不误杀共享 daemon。
 - **权限自动引导**：macOS 下自动检测并触发辅助功能 / 屏幕录制授权弹窗。
 - **能力自动发现**：安装即向 agent 的系统提示注入 Computer Use 能力说明，模型会自行判断何时调用，无需手动指定插件。
 
@@ -50,12 +50,12 @@
 
 | 工具 | 功能 |
 |------|------|
-| `browser_prepare` | 绑定浏览器 DevTools 端点。**只能认领已开着远程调试端口的浏览器**（靠"哪个 pid 拥有本机 loopback 调试 socket"判断）；日常双击启动的 Chrome 会返回 `refusal: browser_requires_setup`。接管走不通时**不要**自动改用 `isolated_new` 开新窗口——须先征得用户同意（不碰用户数据，但也没有登录态） |
-| `browser_state` | 读页面 DOM / 取元素 ref（定位与校验网页内容） |
-| `browser_navigate` | 按 URL 打开网页 |
-| `browser_click` / `browser_type` | DOM 级点击 / 输入（按 `ref` 或视口坐标） |
-| `browser_pointer` | hover / 右键 / 双击 / 滚动 / 拖拽 |
-| `browser_dialog` | 处理 JS 弹窗（alert / confirm / prompt） |
+| `cua_browser_prepare` | 绑定浏览器 DevTools 端点。**只能认领已开着远程调试端口的浏览器**（靠"哪个 pid 拥有本机 loopback 调试 socket"判断）；日常双击启动的 Chrome 会返回 `refusal: browser_requires_setup`。接管走不通时**不要**自动改用 `isolated_new` 开新窗口——须先征得用户同意（不碰用户数据，但也没有登录态） |
+| `cua_browser_state` | 读页面 DOM / 取元素 ref（定位与校验网页内容） |
+| `cua_browser_navigate` | 按 URL 打开网页 |
+| `cua_browser_click` / `cua_browser_type` | DOM 级点击 / 输入（按 `ref` 或视口坐标） |
+| `cua_browser_pointer` | hover / 右键 / 双击 / 滚动 / 拖拽 |
+| `cua_browser_dialog` | 处理 JS 弹窗（alert / confirm / prompt） |
 
 **核心设计**：AX 树只用于"看"（定位元素），操作走**像素级虚拟光标**——光标滑行动画 + 真实点击，模拟真人操作。内置**彩虹渐变动态光标**主题（可自定义）。
 
@@ -94,9 +94,11 @@
 **不再需要手动安装 / 配置 cua-driver，也不再需要手动起常驻 server**。插件在加载时自动完成：
 
 1. **自动引导二进制**：首次运行时若检测不到 `cua-driver`（63MB Rust 原生二进制），按配置自动安装
-   —— 默认跑官方安装器 `curl … install.sh | sh`，或 `driverInstallMethod: direct` 直连 GitHub Release
-   下载并 SHA256 校验，写入托管缓存目录 `~/Library/Caches/dsh-computer-use/bin`（一次联网 + 一次写文件，
-   之后运行期不再下载）。设 `autoInstallDriver: false` 可关闭此行为、改为手动安装。
+   —— macOS/Linux 默认跑官方安装器 `curl … install.sh | sh`；**Windows 自动降级为 direct 直连下载官方
+   预编译资产**（install.sh 是 POSIX 脚本、默认命令依赖 `| sh`，在 cmd.exe 不可行），下载后解压平铺落位
+   （Windows 用系统自带 bsdtar，失败回退 PowerShell Expand-Archive）。两条路径都做 SHA256 校验
+   （显式配置优先，否则自动从官方 `checksums.txt` 取），写入托管缓存目录 `~/.cache/dsh-computer-use/bin`
+   （一次联网 + 一次写文件，之后运行期不再下载）。设 `autoInstallDriver: false` 可关闭此行为、改为手动安装。
 2. **自动管理常驻 daemon**：缺则起 `cua-driver serve`（机器级单例，detached + unref），运行期常驻；
    插件卸载/销毁时**只 `end_session` 清自己的会话，绝不 `stop` 共享 daemon**（其他会话可能还在用）。
 3. **自动权限引导**：macOS 下检测辅助功能 + 屏幕录制授权状态，必要时代 `permissions grant` 触发系统弹窗。
@@ -159,12 +161,12 @@ dsh plugin --profile desktop remove @bhzhangsun/dsh-computer-use
     nativeImage: auto   # 原生直读截图策略：auto（PNG 超限额自动降级 ≤500px JPEG）/ full / compact
     visionProvider: deepseek-official  # Mode D 观察者 provider 路由
     visionModel: deepseek-v4-flash-vision-exp  # Mode D 观察者模型（需声明 image 输入）
-    # —— 零配置引导（本分支新增）——
+    # —— 零配置引导 ——
     autoInstallDriver: true      # cua-driver 缺失时自动引导安装（false 则要求手动安装）
-    driverInstallMethod: installer  # installer（默认，运行 driverInstallCommand）/ direct（直连 Release 下载）
-    driverInstallCommand: 'curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/install.sh | sh'  # 可覆盖
-    driverReleaseUrl: ''         # direct 模式：平台/架构对应的 Release 资产 URL
-    driverReleaseSha256: ''      # direct 模式：预期 SHA256（空则不校验）
+    driverInstallMethod: installer  # installer（默认，运行 driverInstallCommand）/ direct（直连 Release 下载）；Windows 自动降级 direct（install.sh|sh 在 Windows 不可行）
+    driverInstallCommand: 'curl -fsSL https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.38.0/install.sh | sh'  # 可覆盖（Windows 不使用）
+    driverReleaseUrl: ''         # direct 模式：平台/架构对应的 Release 资产 URL；空 = 自动推断官方 binary 资产（Windows zip / darwin universal tar.gz / linux tar.gz）
+    driverReleaseSha256: ''      # direct 模式：预期 SHA256；空 = 自动从官方 checksums.txt 取
     permissionMode: auto         # auto（尝试 permissions grant 触发系统弹窗）/ report（仅检测并提示）
     autoUpdate: true             # 过期则委托 cua-driver 自更新（update --apply）
 ```
@@ -201,14 +203,14 @@ dsh plugin --profile desktop remove @bhzhangsun/dsh-computer-use
 
 ## ⚠️ 已知局限
 
-- **Windows / Linux 待真机实测**（引擎官方支持，指南见 `WINDOWS_TEST.md`）
+- **Windows / Linux 引导安装已支持**：Windows 自动降级 direct 直连下载（zip 解压平铺落位，SHA256 自动校验），Linux 走 direct 或 installer；待真机回归，指南见 `WINDOWS_TEST.md`
 - **原生直读的图片 token 成本**：整窗截图（尤其 Retina）每次进上下文会消耗图片 token；需要高频轮询的场景建议 ax 模式 + `query` 过滤，或 `screen_zoom` 只看局部
 - **AX 安全检测仅对 element 编号模式生效**：坐标模式与无目标输入（`computer_type` / `computer_key` 落前台）由快照 TTL 与"操作可见"兜底（见上"安全设计"）
 - macOS 计算器等窗口显示屏不在 AX 树（用 `mode="native"` 直读即可）
 - **浏览器驱动兼容性（v0.3.6）**：Chrome / Edge 完整支持（同一条 CDP 路径）；**Safari / Firefox 不支持 DOM 级驱动**（引擎是 CDP，绑定不了），相关任务退回 computer-use 的 AX 路径
 - **浏览器优先级重写（v0.3.8）**：决策链改为「先探测浏览器 MCP / 专用插件 → 需要用户登录态就停下来说明限制 → 征得明确同意才新开窗口」。**本组工具定位为兜底**——检测到专用浏览器插件工具或浏览器 MCP 时不得调用；新开窗口必须获得用户明确同意
-- **无头浏览器不可用**：cua-driver 的 `browser_prepare` 在 bind 模式下要求 `pid + window_id`（原生窗口），无头 Chromium 没有窗口，因此**本插件无法驱动无头浏览器**；调试类任务请改用浏览器 MCP（如 chrome-devtools-mcp 的 `--headless`）
-- **「传 pid 接管用户浏览器」实际走不通（实测）**：当前 daemon 是 `standard` 权限模式且无 `--grant existing-profile` 授权，`browser_prepare({ pid })` 对**日常启动**的 Chrome 直接返回 `refusal: browser_requires_setup`（引擎建议的出路只有 `allow_launch=true` 开新窗口）。要真正接管用户正在用的浏览器，正解是浏览器插件或 `chrome-devtools-mcp --autoConnect`，而不是本组工具
+- **无头浏览器不可用**：cua-driver 引擎的 `browser_prepare` 在 bind 模式下要求 `pid + window_id`（原生窗口），无头 Chromium 没有窗口，因此**本插件无法驱动无头浏览器**；调试类任务请改用浏览器 MCP（如 chrome-devtools-mcp 的 `--headless`）
+- **「传 pid 接管用户浏览器」实际走不通（实测）**：当前 daemon 是 `standard` 权限模式且无 `--grant existing-profile` 授权，`cua_browser_prepare({ pid })` 对**日常启动**的 Chrome 直接返回 `refusal: browser_requires_setup`（引擎建议的出路只有 `allow_launch=true` 开新窗口）。要真正接管用户正在用的浏览器，正解是浏览器插件或 `chrome-devtools-mcp --autoConnect`，而不是本组工具
 
 ## 🧪 开发与验证
 
