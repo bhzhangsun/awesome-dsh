@@ -26,7 +26,9 @@
  */
 
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, chmodSync, writeFileSync, readdirSync, unlinkSync } from 'node:fs'
+import {
+  existsSync, mkdirSync, chmodSync, writeFileSync, readdirSync, unlinkSync, readFileSync, rmSync,
+} from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
@@ -46,6 +48,55 @@ export function cacheBinPath() {
 /** 当前已知良好版本（首次引导锁版本，之后交给 cua-driver 自更新）。 */
 const PINNED_VERSION = '0.23.2'
 
+/** 官方 install.sh 的安装 home（其 HOME_DIR 默认值），用于定位它自己的安装锁。 */
+function driverInstallHome() {
+  return process.env.CUA_DRIVER_RS_HOME || join(homedir(), '.cua-driver')
+}
+
+/**
+ * 清理安装器留下的僵尸锁。
+ *
+ * 官方 install.sh 拿不到 `packages/.install.lock.d` 就 `sleep` 轮询，**必须等满 600 秒**
+ * 才会去检查锁里的 pid 是否还活着。上一次安装在下载途中被中断（关应用、kill、崩溃）时，
+ * 这个锁会一直留着，于是下一次安装白等 10 分钟——期间插件条目停留在 loading，
+ * 工具不注册、GUI 开关不可点。这里在引导安装前主动判定：持有者已死就直接删锁。
+ * @param {object} [ctx] 插件上下文，仅用于写日志。
+ * @returns {boolean} 是否清理了僵尸锁。
+ */
+export function clearStaleInstallLock(ctx) {
+  const lockDir = join(driverInstallHome(), 'packages', '.install.lock.d')
+  if (!existsSync(lockDir)) return false
+
+  let holder
+  try {
+    holder = readFileSync(join(lockDir, 'info'), 'utf8').match(/^pid=(\d+)/m)?.[1]
+  } catch {
+    holder = undefined
+  }
+
+  let alive = false
+  if (holder) {
+    try {
+      process.kill(Number(holder), 0)
+      alive = true
+    } catch {
+      alive = false
+    }
+  }
+  if (alive) {
+    ctx?.logger?.info?.(`cua-driver 安装锁由存活进程 ${holder} 持有，交由安装器自行等待`)
+    return false
+  }
+
+  try {
+    rmSync(lockDir, { recursive: true, force: true })
+  } catch {
+    return false
+  }
+  ctx?.logger?.warn?.(`已清理僵尸 cua-driver 安装锁（原持有者 pid=${holder ?? '未知'} 已不存在）`)
+  return true
+}
+
 let _daemonChild = null
 let _startedHere = false
 // 并发合并：确保同一时刻只有一个 ensureDaemon 真正在跑（避免多会话/多工具并发各起一个 daemon）。
@@ -56,9 +107,10 @@ let _grantRestartChain = null
 /**
  * 1. 确保 cua-driver 二进制存在；缺失则引导安装。
  * @param {object} cfg 插件配置（autoInstallDriver / driverInstallMethod / driverInstallCommand / driverRelease*）
+ * @param {object} [ctx] 插件上下文，仅用于写日志。
  * @returns {Promise<{installed:boolean, method?:string, path:string}>}
  */
-export async function ensureDriver(cfg) {
+export async function ensureDriver(cfg, ctx) {
   const existing = findBin()
   if (existing) return { installed: true, path: existing }
 
@@ -70,6 +122,8 @@ export async function ensureDriver(cfg) {
   }
 
   const method = cfg.driverInstallMethod || 'installer'
+  // 上一次安装被中断会留下死锁，安装器自己只会在 600s 后才回收，这里提前处理。
+  clearStaleInstallLock(ctx)
   if (method === 'direct') {
     await bootstrapDirect(cfg)
   } else {
@@ -91,7 +145,7 @@ export async function ensureDriver(cfg) {
  */
 async function bootstrapInstaller(cfg) {
   const cmd = cfg.driverInstallCommand
-    || 'curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/install.sh | sh'
+    || 'curl -fsSL https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.38.0/install.sh | sh'
   await runShell(cmd, 'official-installer')
 }
 
@@ -121,18 +175,41 @@ async function bootstrapDirect(cfg) {
   chmodSync(target, 0o755)
 }
 
-/** 运行 shell 命令（仅用于一次性引导），捕获退出码与输出。 */
-function runShell(command, label) {
+/**
+ * 跑一次性引导命令（curl|sh 之类的管道必需 shell:true）。
+ *
+ * 带硬超时：安装器可能在等锁、等网络、或在下载 100MB 引擎包；无论哪种都不能无限挂住，
+ * 否则后台准备永远不结束（旧版本更糟——它直接在 apply 里等，把整个插件条目拖在 loading）。
+ * @param {string} command 要执行的 shell 命令。
+ * @param {string} label 失败信息里的步骤名。
+ * @param {number} [timeoutMs] 超时毫秒数，默认 20 分钟。
+ * @returns {Promise<string>} 命令标准输出。
+ */
+function runShell(command, label, timeoutMs = 20 * 60_000) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, [], { shell: true, stdio: ['ignore', 'pipe', 'pipe'] })
     let out = ''
     let err = ''
+    let settled = false
+    let timer
+    const finish = (fn, value) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      fn(value)
+    }
+    timer = setTimeout(() => {
+      try { child.kill('SIGTERM') } catch { /* 已退出 */ }
+      setTimeout(() => { try { child.kill('SIGKILL') } catch { /* 已退出 */ } }, 5000).unref?.()
+      finish(reject, new Error(`${label} 超时（${Math.round(timeoutMs / 60000)} 分钟），已终止子进程`))
+    }, timeoutMs)
+    timer.unref?.()
     child.stdout?.on('data', (d) => { out += d })
     child.stderr?.on('data', (d) => { err += d })
-    child.on('error', (e) => reject(new Error(`${label} 启动失败: ${e.message}`)))
+    child.on('error', (e) => finish(reject, new Error(`${label} 启动失败: ${e.message}`)))
     child.on('close', (code) => {
-      if (code === 0) resolve(out)
-      else reject(new Error(`${label} 失败 (exit ${code}): ${(err || out).slice(0, 600)}`))
+      if (code === 0) finish(resolve, out)
+      else finish(reject, new Error(`${label} 失败 (exit ${code}): ${(err || out).slice(0, 600)}`))
     })
   })
 }

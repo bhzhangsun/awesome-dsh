@@ -11,8 +11,8 @@
   - 屏幕观测：`screen_observe` / `screen_zoom`（读取被观测应用的 Accessibility/AX 树与窗口快照）
   - 虚拟鼠标键盘模拟：`computer_click` / `computer_double_click` / `computer_right_click` / `computer_type` / `computer_key` / `computer_scroll` / `computer_drag` / `computer_wait`
   - 应用枚举与启动：`app_list` / `app_launch`
-- **零配置生命周期**（本分支新增）：
-  1. `ensureDriver` —— 若 `cua-driver` 二进制缺失，按配置引导安装（见下“有界的引导”，仅此一次）。
+- **零配置生命周期**（本分支新增，全部在加载后**后台**执行，不阻塞插件注册）：
+  1. `ensureDriver` —— 若 `cua-driver` 二进制缺失，按配置引导安装（见下“有界的引导”，仅此一次）；安装器带超时，并会先清理上一次中断留下的死锁。
   2. `ensureDaemon` —— 缺则起 `cua-driver serve`（机器级单例，detached + unref），运行期常驻。
   3. `ensurePermissions` —— 检测 macOS TCC 状态，必要时经 `permissions grant` 触发授权弹窗。
   4. `ensureVersion` —— 过期则委托 `update --apply` 自更新（网络，可关闭）。
@@ -24,7 +24,7 @@
 仅在 `cua-driver` 二进制缺失时发生，且受 `autoInstallDriver` 开关控制：
 
 - **方式 A（默认，`driverInstallMethod: installer`）**：运行 `driverInstallCommand`
-  （默认 `curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/install.sh | sh`）。
+  （默认 `curl -fsSL https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.38.0/install.sh | sh`）。
   这是本插件**唯一使用 `shell: true` 的地方**（curl|sh 管道必需），只在此一次性引导触发。
 - **方式 B（`direct`）**：`fetch` 直连 `driverReleaseUrl` 下载预编译二进制到缓存目录，
   可选 SHA256 校验（`driverReleaseSha256`）后落盘。

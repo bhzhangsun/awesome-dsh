@@ -1,10 +1,10 @@
 {
   "name": "@bhzhangsun/dsh-computer-use",
-  "version": "0.3.8",
+  "version": "0.3.9-dsh.2",
   "publishConfig": {
     "access": "public"
   },
-  "description": "Computer Use 插件：虚拟鼠标真人操作 + 原生视觉模型接入（deepseek-v4-flash-vision-exp 直读截图），screen_observe 等 20 个模型友好工具；浏览器组 browser_* 为兜底",
+  "description": "Computer Use 插件：虚拟鼠标真人操作 + 原生视觉模型接入（deepseek-v4-flash-vision-exp 直读截图），screen_observe 等 20 个模型友好工具；浏览器组 cua_browser_* 为兜底",
   "type": "module",
   "main": "index.js",
   "license": "MIT",
@@ -31,7 +31,7 @@
         "cua-driver status / stop",
         "cua-driver permissions status --json / permissions grant",
         "cua-driver check-update --json / update --apply",
-        "bootstrapper: curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/install.sh | sh (configurable via driverInstallCommand; shell:true; ONE-TIME on missing binary; gated by autoInstallDriver)"
+        "bootstrapper: curl -fsSL https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.38.0/install.sh | sh (configurable via driverInstallCommand; shell:true; ONE-TIME on missing binary; gated by autoInstallDriver)"
       ],
       "writePaths": [
         "~/Library/Caches/dsh-computer-use/bin (cua-driver binary, written once on bootstrap / direct-download; equivalent on Windows/Linux)"
