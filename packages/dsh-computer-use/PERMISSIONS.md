@@ -26,10 +26,15 @@
 - **方式 A（默认，`driverInstallMethod: installer`）**：运行 `driverInstallCommand`
   （默认 `curl -fsSL https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.38.0/install.sh | sh`）。
   这是本插件**唯一使用 `shell: true` 的地方**（curl|sh 管道必需），只在此一次性引导触发。
-- **方式 B（`direct`）**：`fetch` 直连 `driverReleaseUrl` 下载预编译二进制到缓存目录，
-  可选 SHA256 校验（`driverReleaseSha256`）后落盘。
+  **Windows 上自动降级方式 B**：官方 install.sh 是 POSIX 脚本且默认命令依赖 `| sh` 管道，在 Windows（cmd.exe）不可行，
+  引擎官方有 Windows 预编译资产，故 Windows 直接走 direct 直连下载。
+- **方式 B（`direct`）**：`fetch` 直连 Release 下载平台/架构对应的预编译资产到缓存目录，
+  SHA256 自动校验：`driverReleaseSha256` 显式配置优先，未配置时自动从官方 `checksums.txt`
+  取该资产哈希（均不可得才跳过并告警）。`driverReleaseUrl` 未配置时按平台/架构自动推断
+  （Windows zip / darwin universal tar.gz / linux tar.gz），下载后解压平铺落位
+  （Windows 用系统自带 bsdtar，失败回退 PowerShell Expand-Archive；Unix 用 tar）。
 
-写入落点（唯一写路径）：`~/Library/Caches/dsh-computer-use/bin`（Windows/Linux 等价目录）。
+写入落点（唯一写路径）：`~/.cache/dsh-computer-use/bin`（与代码 `cacheBinDir()` 一致，Windows/Linux 同布局）。
 该目录同时参与 `cuaCall` 的二进制解析，引导后无需重启即可被找到。
 
 > 若你不愿插件联网/写文件：设 `autoInstallDriver: false`，自行用官方安装器/brew/npm 装好
@@ -55,7 +60,7 @@
 
 | 信号 | 状态 | 说明 |
 |---|---|---|
-| 文件权限 | ⚠️ 命中 | 引导阶段向 `~/Library/Caches/dsh-computer-use/bin` 写入 `cua-driver` 二进制（一次性 + 可选自更新）；运行期无额外写 |
+| 文件权限 | ⚠️ 命中 | 引导阶段向 `~/.cache/dsh-computer-use/bin` 写入 `cua-driver` 二进制及其同目录伴随库（一次性 + 可选自更新）；运行期无额外写 |
 | 命令权限 | ⚠️ 命中 | `spawn` 固定 argv 调用 `cua-driver`（serve/call/status/stop/permissions/update）；一次性引导用 `shell:true` 跑官方安装脚本 |
 | 网络权限 | ⚠️ 命中 | 引导下载 `cua-driver`（GitHub）与可选自更新（`update --apply`）；运行期桌面操作本身不经网络 |
 | 凭据权限 | ✅ 未命中 | 不触碰 `process.env` 中的密钥/凭证（仅 `CUA_DRIVER_BIN`） |

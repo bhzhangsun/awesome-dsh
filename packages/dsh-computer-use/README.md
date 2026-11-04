@@ -94,9 +94,11 @@
 **不再需要手动安装 / 配置 cua-driver，也不再需要手动起常驻 server**。插件在加载时自动完成：
 
 1. **自动引导二进制**：首次运行时若检测不到 `cua-driver`（63MB Rust 原生二进制），按配置自动安装
-   —— 默认跑官方安装器 `curl … install.sh | sh`，或 `driverInstallMethod: direct` 直连 GitHub Release
-   下载并 SHA256 校验，写入托管缓存目录 `~/Library/Caches/dsh-computer-use/bin`（一次联网 + 一次写文件，
-   之后运行期不再下载）。设 `autoInstallDriver: false` 可关闭此行为、改为手动安装。
+   —— macOS/Linux 默认跑官方安装器 `curl … install.sh | sh`；**Windows 自动降级为 direct 直连下载官方
+   预编译资产**（install.sh 是 POSIX 脚本、默认命令依赖 `| sh`，在 cmd.exe 不可行），下载后解压平铺落位
+   （Windows 用系统自带 bsdtar，失败回退 PowerShell Expand-Archive）。两条路径都做 SHA256 校验
+   （显式配置优先，否则自动从官方 `checksums.txt` 取），写入托管缓存目录 `~/.cache/dsh-computer-use/bin`
+   （一次联网 + 一次写文件，之后运行期不再下载）。设 `autoInstallDriver: false` 可关闭此行为、改为手动安装。
 2. **自动管理常驻 daemon**：缺则起 `cua-driver serve`（机器级单例，detached + unref），运行期常驻；
    插件卸载/销毁时**只 `end_session` 清自己的会话，绝不 `stop` 共享 daemon**（其他会话可能还在用）。
 3. **自动权限引导**：macOS 下检测辅助功能 + 屏幕录制授权状态，必要时代 `permissions grant` 触发系统弹窗。
@@ -159,12 +161,12 @@ dsh plugin --profile desktop remove @bhzhangsun/dsh-computer-use
     nativeImage: auto   # 原生直读截图策略：auto（PNG 超限额自动降级 ≤500px JPEG）/ full / compact
     visionProvider: deepseek-official  # Mode D 观察者 provider 路由
     visionModel: deepseek-v4-flash-vision-exp  # Mode D 观察者模型（需声明 image 输入）
-    # —— 零配置引导（本分支新增）——
+    # —— 零配置引导 ——
     autoInstallDriver: true      # cua-driver 缺失时自动引导安装（false 则要求手动安装）
-    driverInstallMethod: installer  # installer（默认，运行 driverInstallCommand）/ direct（直连 Release 下载）
-    driverInstallCommand: 'curl -fsSL https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.38.0/install.sh | sh'  # 可覆盖
-    driverReleaseUrl: ''         # direct 模式：平台/架构对应的 Release 资产 URL
-    driverReleaseSha256: ''      # direct 模式：预期 SHA256（空则不校验）
+    driverInstallMethod: installer  # installer（默认，运行 driverInstallCommand）/ direct（直连 Release 下载）；Windows 自动降级 direct（install.sh|sh 在 Windows 不可行）
+    driverInstallCommand: 'curl -fsSL https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.38.0/install.sh | sh'  # 可覆盖（Windows 不使用）
+    driverReleaseUrl: ''         # direct 模式：平台/架构对应的 Release 资产 URL；空 = 自动推断官方 binary 资产（Windows zip / darwin universal tar.gz / linux tar.gz）
+    driverReleaseSha256: ''      # direct 模式：预期 SHA256；空 = 自动从官方 checksums.txt 取
     permissionMode: auto         # auto（尝试 permissions grant 触发系统弹窗）/ report（仅检测并提示）
     autoUpdate: true             # 过期则委托 cua-driver 自更新（update --apply）
 ```
@@ -201,7 +203,7 @@ dsh plugin --profile desktop remove @bhzhangsun/dsh-computer-use
 
 ## ⚠️ 已知局限
 
-- **Windows / Linux 待真机实测**（引擎官方支持，指南见 `WINDOWS_TEST.md`）
+- **Windows / Linux 引导安装已支持**：Windows 自动降级 direct 直连下载（zip 解压平铺落位，SHA256 自动校验），Linux 走 direct 或 installer；待真机回归，指南见 `WINDOWS_TEST.md`
 - **原生直读的图片 token 成本**：整窗截图（尤其 Retina）每次进上下文会消耗图片 token；需要高频轮询的场景建议 ax 模式 + `query` 过滤，或 `screen_zoom` 只看局部
 - **AX 安全检测仅对 element 编号模式生效**：坐标模式与无目标输入（`computer_type` / `computer_key` 落前台）由快照 TTL 与"操作可见"兜底（见上"安全设计"）
 - macOS 计算器等窗口显示屏不在 AX 树（用 `mode="native"` 直读即可）

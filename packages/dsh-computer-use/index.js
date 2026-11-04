@@ -63,7 +63,7 @@ import { guard } from './lib/guard.js'
 import { cuaCall, ensureCuaSession, DEFAULT_SESSION } from './lib/cua.js'
 import {
   ensureDriver, ensureDaemon, ensurePermissions, ensureVersion, endSessionOnUnload,
-  restartDaemon, waitForGranted,
+  restartDaemon, waitForGranted, RELEASE_TAG,
 } from './lib/driver.js'
 import { withLock } from './lib/lock.js'
 import { getSnapshot, isFresh } from './lib/snapshot.js'
@@ -197,8 +197,9 @@ export async function apply(ctx, config) {
     visionModel: config.visionModel || 'deepseek-v4-flash-vision-exp',
     autoInstallDriver: config.autoInstallDriver !== false,
     driverInstallMethod: config.driverInstallMethod || 'installer',
+    // 安装器 URL 与 direct 资产同源（RELEASE_TAG），避免两处版本漂移；Windows 上不使用此命令。
     driverInstallCommand: config.driverInstallCommand
-      || 'curl -fsSL https://github.com/trycua/cua/releases/download/cua-driver-rs-v0.38.0/install.sh | sh',
+      || `curl -fsSL https://github.com/trycua/cua/releases/download/${RELEASE_TAG}/install.sh | sh`,
     driverReleaseUrl: config.driverReleaseUrl || '',
     driverReleaseSha256: config.driverReleaseSha256 || '',
     permissionMode: config.permissionMode || 'auto',

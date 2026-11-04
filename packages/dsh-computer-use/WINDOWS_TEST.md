@@ -6,7 +6,7 @@
 ## 前置
 
 - Windows 10/11（普通用户权限运行 harness/cua-driver；**管理员权限窗口不可操作**，属引擎既定边界）
-- cua-driver Windows 版已安装（官方支持：Win32 + UIA，已验证 Electron/Tauri/WPF/WinUI 3/WebView2）
+- cua-driver Windows 版：**无需手动安装**——插件在二进制缺失时自动引导（Windows 自动走 direct 直连下载官方 zip，解压平铺到缓存目录并 SHA256 校验）；如引导失败，可手动从 [cua-driver-rs releases](https://github.com/trycua/cua/releases/tag/cua-driver-rs-v0.38.0) 下载 `windows-x86_64-binary.zip`，解压后设 `CUA_DRIVER_BIN` 指向 `cua-driver.exe`
 - harness-desktop（Windows 版）已装，`install.sh` 完成插件注册
 
 ## 冒烟步骤（headless，可脚本化）

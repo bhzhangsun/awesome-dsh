@@ -35,7 +35,7 @@ rm -rf "$DSH_HOME"
 | 入口可加载 | `node -e "import('./index.js')"` | 成功（导出 name/inject/apply） |
 | 工具注册面 | grep index.js `defineTool` | **13 个工具**：screen_observe / screen_zoom / computer_click / computer_double_click / computer_right_click / computer_type / computer_key / computer_scroll / computer_drag / computer_wait / computer_sequence / app_list / app_launch |
 | 安全护栏 | index.js `guard()` 统一包装 | 危险词审批、密码框保护、过期状态拒绝、作用域权限 |
-| 权限面 | `PERMISSIONS.md` | 运行期 spawn cua-driver 固定 argv；**有界引导**（缺失时一次性联网下载 + 写缓存目录 `~/Library/Caches/dsh-computer-use/bin`，直连模式 SHA256 校验）；该有界网络/写已在 package.json `dsh.permissions` 如实声明 |
+| 权限面 | `PERMISSIONS.md` | 运行期 spawn cua-driver 固定 argv；**有界引导**（缺失时一次性联网下载 + 写缓存目录 `~/.cache/dsh-computer-use/bin`，直连模式 SHA256 校验）；该有界网络/写已在 package.json `dsh.permissions` 如实声明 |
 | 真实引擎集成（2026-09-02，本机实跑） | `node _test-driver.mjs` | 真实 cua-driver 0.23.2：ensureDaemon 起 daemon → ensureCuaSession 建会话 → list_windows 返回真实窗口 → get_window_state 返回 3 个真实元素 → endAllCuaSessions 清会话 → 停 daemon，全链路通过 |
 | npm 包 | `npm pack` 内容核验 | files: index.js / lib/ / tools/ / cordis.patch.yml / README / VERIFICATION / PERMISSIONS.md / docs/ / LICENSE |
 
@@ -46,7 +46,7 @@ rm -rf "$DSH_HOME"
 | 规范仓库（canonical repository） | package.json `repository` → `git+https://github.com/bhzhangsun/awesome-dsh.git`（`directory: packages/dsh-computer-use`，与源码所在仓库一致） |
 | Node 兼容性声明 | `engines.node >= 22.18.0` + `dsh.compatibility.node` |
 | 供应链审查 | 依赖仅 `@deepseek-ai/dsh-tools` + `@deepseek-ai/schemastery`（官方生态）；无 runtime/optional 第三方依赖；peer 层面无 |
-| 文件权限信号 | 运行期 `spawn` cua-driver（核心能力，非数据访问）；**有界引导**向 `~/Library/Caches/dsh-computer-use/bin` 一次性写入 cua-driver 二进制（及可选自更新），已在 `PERMISSIONS.md` 声明 |
+| 文件权限信号 | 运行期 `spawn` cua-driver（核心能力，非数据访问）；**有界引导**向 `~/.cache/dsh-computer-use/bin` 一次性写入 cua-driver 二进制（及可选自更新），已在 `PERMISSIONS.md` 声明 |
 | 命令权限信号 | `spawn` 固定 argv 调用 cua-driver（serve/call/status/stop/permissions/update）；**唯一 `shell:true` 仅用于一次性引导安装器**（curl\|sh，受 `autoInstallDriver` 控制），无 `exec`/`eval` |
 
 ## 4. 验证脚本
